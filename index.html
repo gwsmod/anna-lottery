@@ -5711,6 +5711,7 @@ return true;
     jwtAutoPasteBtn.addEventListener('click',async()=>{
       S.authMode='jwt';
       loginSection.classList.add('jwt-mode');
+
       const serverGroup=document.getElementById('serverSelectorGroup');
       if(serverGroup) serverGroup.classList.add('jwt-server-hidden');
 
@@ -5719,7 +5720,13 @@ return true;
         phoneInput.required=false;
       }
 
-      await loadSavedJWT();
+      // Load the exact saved phone's JWT from Supabase, then login
+      // automatically. No second "Login with Token" click is required.
+      const loaded = await loadSavedJWT();
+
+      if(loaded?.token){
+        await loginWithJWT(loaded.token);
+      }
     });
   }
 
