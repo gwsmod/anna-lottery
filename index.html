@@ -2678,164 +2678,46 @@ select:focus{
     return d;
   }
 
-  // ─── JWT DASHBOARD SAVED NUMBERS (LOCAL ONLY) ─────────────────────────────
-  // Manual "Add" numbers are kept locally for JWT lookup. They are NOT sent
-  // to or deleted from the auto-login server.
-  const JWT_DASHBOARD_NUMBERS_KEY = 'bhau_jwt_dashboard_numbers_v1';
+  // ─── SERVER-SIDE DASHBOARD SAVED NUMBERS ────────────────────────────────
+  // Dashboard numbers live only in Supabase dashboard_saved_numbers.
+  const DASHBOARD_API_URL = JWT_LOADER_URL;
+  const DASHBOARD_API_KEY = JWT_LOADER_KEY;
 
-  function getJwtDashboardNumbers(){
-    try{
-      const a=JSON.parse(localStorage.getItem(JWT_DASHBOARD_NUMBERS_KEY)||'[]');
-      return Array.isArray(a)
-        ? a.map(v=>String(v).replace(/\D/g,'')).filter(v=>/^[6-9]\d{9}$/.test(v))
-        : [];
-    }catch(_){ return []; }
+  async function dashboardAPI(action, extra={}){
+    const r=await fetch(DASHBOARD_API_URL,{method:'POST',headers:{
+      'apikey':DASHBOARD_API_KEY,'Authorization':'Bearer '+DASHBOARD_API_KEY,
+      'Content-Type':'application/json','Accept':'application/json'},
+      body:JSON.stringify({action,...extra}),cache:'no-store'});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok || d.success!==true) throw new Error(d.error||'Dashboard server request failed.');
+    return d;
   }
 
-  function saveJwtDashboardNumber(phone){
-    const p=String(phone||'').replace(/\D/g,'');
-    if(!/^[6-9]\d{9}$/.test(p)) return false;
-    const a=getJwtDashboardNumbers();
-    if(!a.includes(p)) a.push(p);
-    try{ localStorage.setItem(JWT_DASHBOARD_NUMBERS_KEY,JSON.stringify(a)); }catch(_){}
-    return true;
-  }
-
-  function removeJwtDashboardNumber(phone){
-    const p=String(phone||'').replace(/\D/g,'');
-    const a=getJwtDashboardNumbers().filter(v=>v!==p);
-    try{ localStorage.setItem(JWT_DASHBOARD_NUMBERS_KEY,JSON.stringify(a)); }catch(_){}
-  }
-
-  // ─── DASHBOARD NUMBER HIDE (CLIENT ONLY) ─────────────────────────────────
-  // Removing a number here only hides it from this dashboard. It does NOT
-  // delete the number or its JWT record from Supabase/Firebase/server storage.
-  const HIDDEN_DASHBOARD_NUMBERS_KEY = 'bhau_hidden_dashboard_numbers_v1';
-
-  function getHiddenDashboardNumbers(){
-    try{
-      const a = JSON.parse(localStorage.getItem(HIDDEN_DASHBOARD_NUMBERS_KEY) || '[]');
-      return new Set(Array.isArray(a) ? a.map(v=>String(v).replace(/\D/g,'')) : []);
-    }catch(_){
-      return new Set();
-    }
-  }
-
-  function hideDashboardNumber(phone){
-    const p = String(phone || '').replace(/\D/g,'');
-    if(!p) return;
-    const hidden = getHiddenDashboardNumbers();
-    hidden.add(p);
-    try{
-      localStorage.setItem(
-        HIDDEN_DASHBOARD_NUMBERS_KEY,
-        JSON.stringify([...hidden])
-      );
-    }catch(_){}
-  }
-
-  function showDashboardNumberAgain(phone){
-    const p = String(phone || '').replace(/\D/g,'');
-    const hidden = getHiddenDashboardNumbers();
-    hidden.delete(p);
-    try{
-      localStorage.setItem(
-        HIDDEN_DASHBOARD_NUMBERS_KEY,
-        JSON.stringify([...hidden])
-      );
-    }catch(_){}
+  async function getServerDashboardNumbers(){
+    const d=await dashboardAPI('dashboard_list');
+    return Array.isArray(d.data) ? d.data : [];
   }
 
   function renderDashboardNumbers(numbers){
-    const hidden = getHiddenDashboardNumbers();
-    const clean = [];
-
-    // Include numbers manually added for JWT lookup, even if they already
-    // exist in the normal auto-login server. This is dashboard-only storage.
-    const merged = [...getJwtDashboardNumbers(), ...(numbers || [])];
-
-    for(const item of merged){
-      const phone = typeof item === 'string'
-        ? item
-        : (item?.phone_number ?? item?.number ?? item?.phone ?? '');
-
-      const p = String(phone).replace(/\D/g,'');
-      if(!p || hidden.has(p)) continue;
-
-      if(!clean.some(x=>x.phone===p)){
-        clean.push({
-          phone:p,
-          raw: item
-        });
-      }
+    const clean=[];
+    for(const item of (numbers||[])){
+      const p=String(item?.phone ?? item ?? '').replace(/\D/g,'');
+      if(!/^[6-9]\d{9}$/.test(p)) continue;
+      if(!clean.some(x=>x.phone===p)) clean.push({phone:p,raw:item});
     }
-
-    numberStatus.textContent = clean.length + ' unused';
-    numberStatus.style.color = clean.length ? '#34d399' : '#6b7280';
-
-    numberList.innerHTML = clean.length
-      ? clean.slice(0,3).map(x => `
-          <div class="number-item dashboard-number-row"
-               data-dashboard-phone="${x.phone}"
-               style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
-            <span>📱 ${x.phone}</span>
-            <button
-              type="button"
-              class="dashboard-number-delete"
-              data-phone="${x.phone}"
-              title="Remove from dashboard"
-              aria-label="Remove ${x.phone} from dashboard"
-              style="border:0;background:rgba(239,68,68,.12);color:#fb7185;border:1px solid rgba(239,68,68,.25);border-radius:9px;padding:5px 8px;cursor:pointer;font-weight:800;">
-              🗑️
-            </button>
-          </div>
-        `).join('')
-      : '<span style="color:#6b7280;font-size:11px;">No unused numbers available</span>';
-
-    numberList.querySelectorAll('.dashboard-number-delete').forEach(btn=>{
-      btn.addEventListener('click', function(){
-        const phone = this.dataset.phone || '';
-        if(!phone) return;
-
-        hideDashboardNumber(phone);
-        removeJwtDashboardNumber(phone);
-
-        // IMPORTANT: client-only removal. No API/database delete is called.
-        const row = this.closest('.dashboard-number-row');
-        if(row) row.remove();
-
-        const remaining = numberList.querySelectorAll('.dashboard-number-row').length;
-        numberStatus.textContent = remaining + ' unused';
-        numberStatus.style.color = remaining ? '#34d399' : '#6b7280';
-
-        if(!remaining){
-          numberList.innerHTML =
-            '<span style="color:#6b7280;font-size:11px;">No unused numbers available</span>';
-        }
-
-        showToast('Number removed from dashboard only. Database data was not deleted.','success');
-      });
-    });
+    numberStatus.textContent=clean.length+' saved';
+    numberStatus.style.color=clean.length?'#34d399':'#6b7280';
+    numberList.innerHTML=clean.length ? clean.map(x=>`<div class="number-item dashboard-number-row" data-dashboard-phone="${x.phone}" style="display:flex;align-items:center;justify-content:space-between;gap:8px;"><span>📱 ${x.phone}</span><button type="button" class="dashboard-number-delete" data-phone="${x.phone}" title="Remove from dashboard" style="border:0;background:rgba(239,68,68,.12);color:#fb7185;border:1px solid rgba(239,68,68,.25);border-radius:9px;padding:5px 8px;cursor:pointer;font-weight:800;">🗑️</button></div>`).join('') : '<span style="color:#6b7280;font-size:11px;">No saved numbers available</span>';
+    numberList.querySelectorAll('.dashboard-number-delete').forEach(btn=>btn.addEventListener('click',async function(){
+      const phone=this.dataset.phone||''; if(!phone)return; this.disabled=true;
+      try{await dashboardAPI('dashboard_delete',{phone});showToast('Number removed from dashboard. JWT data was not deleted.','success');await updateNumberDisplay();}
+      catch(e){this.disabled=false;showToast(e.message||'Unable to remove number.','error');}
+    }));
   }
 
-  // ─── UI UPDATES ───────────────────────────────────────────────────────────
   async function updateNumberDisplay(){
-    try{
-      // Firebase is the shared source for manually saved dummy numbers.
-      // Hidden numbers are filtered locally only; no delete is sent anywhere.
-      if(window.__bhauDummyNumbersLoaded){
-        const data=window.__bhauDummyNumbers||{};
-        const entries=Object.values(data).filter(v=>v && v.number && v.used!==true);
-        renderDashboardNumbers(entries);
-        return;
-      }
-
-      const r=await autoLoginAPI('get_unused');
-      renderDashboardNumbers(r.numbers||[]);
-    }catch(e){
-      numberStatus.textContent='0 unused';
-      numberList.innerHTML='<span style="color:#fb7185;font-size:11px;">Unable to load numbers</span>';
-    }
+    try{renderDashboardNumbers(await getServerDashboardNumbers());}
+    catch(e){numberStatus.textContent='0 saved';numberList.innerHTML='<span style="color:#fb7185;font-size:11px;">Unable to load saved numbers</span>';}
   }
 
   // ─── SESSION ──────────────────────────────────────────────────────────────
@@ -2926,7 +2808,16 @@ select:focus{
         saveSession();
         updateServerBadges();
         await updateNumberDisplay();
-        return true;
+        
+    // Successful normal login: remove the logged-in phone from the
+    // server-side dashboard list only.
+    const loggedPhone =
+      String(phoneInput?.value || S.phone || '').replace(/\D/g,'');
+    if(/^[6-9]\d{9}$/.test(loggedPhone)){
+      await removeLoggedInNumberFromDashboard(loggedPhone);
+    }
+
+return true;
       }
       showToast(d.msg||'Login failed. Please try again.','error');
       return false;
@@ -3068,77 +2959,27 @@ select:focus{
   // old auto-login server, so an existing server number can never produce
   // "already exists" / "all 3 slots occupied" for this dashboard feature.
   async function manualAutoSaveReferrals(){
-    if(autoSaveReferralsBtn.disabled) return;
-    autoSaveReferralsBtn.disabled=true;
-    autoSaveReferralsBtn.textContent='⏳ Saving...';
-
+    if(autoSaveReferralsBtn.disabled)return;
+    autoSaveReferralsBtn.disabled=true;autoSaveReferralsBtn.textContent='⏳ Saving...';
     try{
       const referrals=S.referralHistoryCache||[];
-      if(!referrals.length){
-        showToast('No referral history available. Please load Referral History first.','warning');
-        return;
-      }
-
-      const existing=getJwtDashboardNumbers();
-      const hidden=getHiddenDashboardNumbers();
-      const available=Math.max(0,3-existing.filter(n=>!hidden.has(n)).length);
-
-      if(available<=0){
-        showToast('All 3 dashboard slots are already occupied.','warning');
-        return;
-      }
-
-      let added=0, dupes=0, invalid=0;
-      const seen=new Set(existing);
-
+      if(!referrals.length){showToast('No referral history available. Please load Referral History first.','warning');return;}
+      const existing=await getServerDashboardNumbers();
+      const seen=new Set(existing.map(x=>String(x.phone||'').replace(/\D/g,'')));
+      let added=0,notFound=0;
       for(const ref of referrals){
-        if(added>=available) break;
-
         const phone=String(ref.inviteUserPhone||'').replace(/\D/g,'');
-        if(!/^[6-9]\d{9}$/.test(phone)){
-          invalid++;
-          continue;
-        }
-
-        if(seen.has(phone)){
-          dupes++;
-          continue;
-        }
-
-        saveJwtDashboardNumber(phone);
-        showDashboardNumberAgain(phone);
-        seen.add(phone);
-        added++;
-
-        // Python is the source of JWT data. Try the exact phone lookup,
-        // but saving the dashboard number must not depend on JWT availability.
+        if(!/^[6-9]\d{9}$/.test(phone)||seen.has(phone))continue;
         try{
-          const savedJwt=await loadSavedJWT(phone);
-          if(savedJwt?.token){
-            try{
-              localStorage.setItem('bhau_pending_saved_jwt',JSON.stringify({
-                phone:savedJwt.phone,
-                token:savedJwt.token,
-                at:Date.now()
-              }));
-            }catch(_){ }
-          }
-        }catch(_){ }
+          const jwt=await loadSavedJWT(phone);
+          if(!jwt?.token){notFound++;continue;}
+          await dashboardAPI('dashboard_add',{phone});seen.add(phone);added++;
+        }catch(_){notFound++;}
       }
-
       await updateNumberDisplay();
-
-      if(added>0){
-        showToast(`✅ ${added} referral number(s) added to dashboard.`,'success');
-      }else{
-        showToast(`No new referral numbers. ${dupes} duplicates, ${invalid} invalid.`,'warning');
-      }
-    }catch(e){
-      showToast('Error: '+(e.message||'Unable to auto-save referrals.'),'error');
-    }finally{
-      autoSaveReferralsBtn.disabled=false;
-      autoSaveReferralsBtn.textContent='📥 AUTO SAVE REFERRALS';
-    }
+      showToast(added?`✅ ${added} referral number(s) saved on server.`:`No new numbers saved. ${notFound} not found in Python JWT data.`,added?'success':'warning');
+    }catch(e){showToast('Error: '+(e.message||'Unable to auto-save referrals.'),'error');}
+    finally{autoSaveReferralsBtn.disabled=false;autoSaveReferralsBtn.textContent='📥 AUTO SAVE REFERRALS';}
   }
 
   // ─── MAIN DASHBOARD HEADER VISIBILITY ─────────────────────────────────
@@ -5437,7 +5278,16 @@ select:focus{
       void updateNumberDisplay();
 
       showToast('✅ JWT login successful. Welcome back!','success');
-      return true;
+      
+    // Successful JWT login: remove this phone from the dashboard saved list
+    // only. Do NOT delete its jwt_tokens master record.
+    const loggedPhone =
+      String(phoneInput?.value || S.phone || '').replace(/\D/g,'');
+    if(/^[6-9]\d{9}$/.test(loggedPhone)){
+      await removeLoggedInNumberFromDashboard(loggedPhone);
+    }
+
+return true;
     }catch(e){
       S.token='';
       S.isLoggedIn=false;
@@ -5530,50 +5380,18 @@ select:focus{
   // ─── SAVE NUMBER ──────────────────────────────────────────────────────
   saveNumberBtn.addEventListener('click',async function(){
     const phone=saveNumberInput.value.trim();
-    if(!/^[6-9]\d{9}$/.test(phone)){
-      showToast('Enter valid 10-digit number.','warning');
-      return;
-    }
-
+    if(!/^[6-9]\d{9}$/.test(phone)){showToast('Enter valid 10-digit number.','warning');return;}
     this.disabled=true;
     try{
-      // Manual Add is now DASHBOARD/JWT storage only.
-      // Do NOT call autoLoginAPI('save'): an existing server number must not
-      // block JWT use, and this action must not create/change server records.
-      saveJwtDashboardNumber(phone);
-
-      // If this number was previously hidden, show it again.
-      showDashboardNumberAgain(phone);
-
-      // Python is the source of the JWT. Lookup is exact by phone.
+      // Dashboard save is allowed only when Python has already loaded this exact phone+JWT.
       const savedJwt=await loadSavedJWT(phone);
-
-      if(savedJwt?.token){
-        try{
-          localStorage.setItem('bhau_pending_saved_jwt',JSON.stringify({
-            phone:savedJwt.phone,
-            token:savedJwt.token,
-            at:Date.now()
-          }));
-        }catch(_){}
-      }
-
+      if(!savedJwt?.token){showToast('❌ Number is not available in Python/Supabase JWT data.','warning');return;}
+      await dashboardAPI('dashboard_add',{phone});
       saveNumberInput.value='';
-
-      showToast(
-        savedJwt?.token
-          ? '✅ Number added & matching Python JWT loaded.'
-          : '✅ Number added. No matching Python JWT found.',
-        savedJwt?.token ? 'success' : 'warning'
-      );
-
+      showToast('✅ Number saved on server & matching JWT found.','success');
       await updateNumberDisplay();
-
-    }catch(e){
-      showToast(e.message||'Number add failed.','error');
-    }finally{
-      this.disabled=false;
-    }
+    }catch(e){showToast(e.message||'Number save failed.','error');}
+    finally{this.disabled=false;}
   });
 
   saveNumberInput.addEventListener('keydown',e=>{ if(e.key==='Enter') saveNumberBtn.click(); });
@@ -5709,27 +5527,51 @@ select:focus{
 
   // ─── JWT SAVED TOKEN AUTO-PASTE ──────────────────────────────────────
   function getDashboardSavedNumber(){
-    // Prefer the number currently shown in the dashboard list.
-    const firstRow=document.querySelector('#numberList .dashboard-number-row[data-dashboard-phone]');
-    if(firstRow){
-      const p=String(firstRow.getAttribute('data-dashboard-phone')||'').replace(/\D/g,'');
-      if(/^[6-9]\d{9}$/.test(p)) return p;
+    const row=document.querySelector('#numberList .dashboard-number-row[data-dashboard-phone]');
+    if(row){const p=String(row.getAttribute('data-dashboard-phone')||'').replace(/\D/g,'');if(/^[6-9]\d{9}$/.test(p))return p;}
+    for(const value of [phoneInput?.value,saveNumberInput?.value,S.phone]){
+      const p=String(value||'').replace(/\D/g,'');if(/^[6-9]\d{9}$/.test(p))return p;
     }
-
-    // Fallback to the currently entered/saved phone field.
-    const candidates=[
-      phoneInput?.value,
-      saveNumberInput?.value,
-      ...getJwtDashboardNumbers(),
-      S.phone
-    ];
-
-    for(const value of candidates){
-      const p=String(value||'').replace(/\D/g,'');
-      if(/^[6-9]\d{9}$/.test(p)) return p;
-    }
-
     return '';
+  }
+
+
+  // ─── REMOVE DASHBOARD NUMBER AFTER SUCCESSFUL LOGIN ─────────────────────
+  async function removeLoggedInNumberFromDashboard(phone){
+    const p = String(phone || '').replace(/\D/g,'');
+    if(!/^[6-9]\d{9}$/.test(p)) return false;
+
+    try{
+      const r = await fetch(JWT_LOADER_URL, {
+        method:'POST',
+        headers:{
+          'apikey':JWT_LOADER_KEY,
+          'Authorization':'Bearer '+JWT_LOADER_KEY,
+          'Content-Type':'application/json'
+        },
+        body:JSON.stringify({
+          action:'dashboard_delete',
+          phone:p
+        })
+      });
+
+      const d = await r.json().catch(()=>({}));
+      if(!r.ok || !d.success){
+        console.warn('Dashboard number auto-remove failed:', d.error || r.status);
+        return false;
+      }
+
+      // Refresh the server-side dashboard list so the logged-in number
+      // disappears immediately. JWT master data remains untouched.
+      try{
+        await updateNumberDisplay();
+      }catch(_){}
+
+      return true;
+    }catch(e){
+      console.warn('Dashboard number auto-remove error:', e);
+      return false;
+    }
   }
 
   async function loadSavedJWT(phoneOverride=''){
