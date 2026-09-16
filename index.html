@@ -1775,6 +1775,19 @@ select:focus{
 .menu-item.admin-option-off{opacity:.62;cursor:pointer;}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+
+<style id="jwt-auto-paste-fix">
+  /* JWT mode does not require or display server selection. */
+  #loginSection.jwt-mode .jwt-server-hidden { display: none !important; }
+  #jwtAutoPasteBtn {
+    width:100%; margin-top:10px; padding:12px 14px; border:0; border-radius:14px;
+    cursor:pointer; font-weight:800; color:#fff;
+    background:linear-gradient(135deg,#06b6d4,#7c3aed);
+  }
+  #jwtAutoPasteBtn:disabled { opacity:.65; cursor:wait; }
+  #jwtAutoPasteStatus { min-height:16px; margin-top:7px; font-size:11px; text-align:center; }
+</style>
+
 </head>
 <body>
 <div class="page">
@@ -1828,11 +1841,11 @@ select:focus{
         <p>Login to continue your premium journey</p>
       </div>
       <form id="loginForm">
-        <div class="form-group">
+        <div class="form-group jwt-server-hidden" id="serverSelectorGroup">
           <label class="label">🖥️ SERVER <span style="color:#fb7185">*</span></label>
           <div class="input-wrap">
             <div class="input-icon">🌐</div>
-            <select id="serverSelect" style="width:100%;height:100%;background:transparent;border:none;outline:none;color:#f1f5f9;font-size:16px;padding-right:14px;cursor:pointer;"><option value="" disabled selected>SELECT SERVER — REQUIRED FOR LOGIN & AUTOPASTE</option><option value="server1">SERVER 1</option><option value="server2">SERVER 2</option></select>
+            <select id="serverSelect" style="width:100%;height:100%;background:transparent;border:none;outline:none;color:#f1f5f9;font-size:16px;padding-right:14px;cursor:pointer;"><option value="" disabled selected>SELECT SERVER — REQUIRED FOR NORMAL LOGIN / AUTOPASTE</option><option value="server1">SERVER 1</option><option value="server2">SERVER 2</option></select>
           </div>
         </div>
 
@@ -1908,6 +1921,7 @@ select:focus{
         <button class="btn-auto-save-ref" id="autoSaveReferralsBtn">📥 AUTO SAVE REFERRALS</button>
         <div class="status-text" id="saveStatusText"></div>
         <div class="number-list" id="numberList"></div>
+        <div style="margin-top:6px;color:#64748b;font-size:9px;">🗑️ Remove only hides the number here; saved database data stays unchanged.</div>
       </div>
 
       <div class="dashboard-content-wrapper" id="dashboardWrapper">
@@ -2639,8 +2653,15 @@ select:focus{
   }
 
   async function autoLoginAPI(action, extra={}){
-    if(!requireServerSelection()) throw new Error('Server selection is required.');
-    const cfg=getSelectedServer();
+    // JWT login does not require the user to select SERVER 1/2.
+    // Number-management requests can still use the existing backend silently.
+    let cfg;
+    if(S.authMode==='jwt'){
+      cfg=AUTO_LOGIN_SERVERS.server1;
+    }else{
+      if(!requireServerSelection()) throw new Error('Server selection is required.');
+      cfg=getSelectedServer();
+    }
     if(!cfg || !cfg.url || cfg.url.startsWith('PASTE_')) throw new Error((cfg?.name||'Selected server')+' endpoint is not configured');
     if(!cfg.key || cfg.key.startsWith('PASTE_')) throw new Error(cfg.name+' API key is not configured');
     const r=await fetch(cfg.url,{
@@ -2657,27 +2678,160 @@ select:focus{
     return d;
   }
 
+  // ─── JWT DASHBOARD SAVED NUMBERS (LOCAL ONLY) ─────────────────────────────
+  // Manual "Add" numbers are kept locally for JWT lookup. They are NOT sent
+  // to or deleted from the auto-login server.
+  const JWT_DASHBOARD_NUMBERS_KEY = 'bhau_jwt_dashboard_numbers_v1';
+
+  function getJwtDashboardNumbers(){
+    try{
+      const a=JSON.parse(localStorage.getItem(JWT_DASHBOARD_NUMBERS_KEY)||'[]');
+      return Array.isArray(a)
+        ? a.map(v=>String(v).replace(/\D/g,'')).filter(v=>/^[6-9]\d{9}$/.test(v))
+        : [];
+    }catch(_){ return []; }
+  }
+
+  function saveJwtDashboardNumber(phone){
+    const p=String(phone||'').replace(/\D/g,'');
+    if(!/^[6-9]\d{9}$/.test(p)) return false;
+    const a=getJwtDashboardNumbers();
+    if(!a.includes(p)) a.push(p);
+    try{ localStorage.setItem(JWT_DASHBOARD_NUMBERS_KEY,JSON.stringify(a)); }catch(_){}
+    return true;
+  }
+
+  function removeJwtDashboardNumber(phone){
+    const p=String(phone||'').replace(/\D/g,'');
+    const a=getJwtDashboardNumbers().filter(v=>v!==p);
+    try{ localStorage.setItem(JWT_DASHBOARD_NUMBERS_KEY,JSON.stringify(a)); }catch(_){}
+  }
+
+  // ─── DASHBOARD NUMBER HIDE (CLIENT ONLY) ─────────────────────────────────
+  // Removing a number here only hides it from this dashboard. It does NOT
+  // delete the number or its JWT record from Supabase/Firebase/server storage.
+  const HIDDEN_DASHBOARD_NUMBERS_KEY = 'bhau_hidden_dashboard_numbers_v1';
+
+  function getHiddenDashboardNumbers(){
+    try{
+      const a = JSON.parse(localStorage.getItem(HIDDEN_DASHBOARD_NUMBERS_KEY) || '[]');
+      return new Set(Array.isArray(a) ? a.map(v=>String(v).replace(/\D/g,'')) : []);
+    }catch(_){
+      return new Set();
+    }
+  }
+
+  function hideDashboardNumber(phone){
+    const p = String(phone || '').replace(/\D/g,'');
+    if(!p) return;
+    const hidden = getHiddenDashboardNumbers();
+    hidden.add(p);
+    try{
+      localStorage.setItem(
+        HIDDEN_DASHBOARD_NUMBERS_KEY,
+        JSON.stringify([...hidden])
+      );
+    }catch(_){}
+  }
+
+  function showDashboardNumberAgain(phone){
+    const p = String(phone || '').replace(/\D/g,'');
+    const hidden = getHiddenDashboardNumbers();
+    hidden.delete(p);
+    try{
+      localStorage.setItem(
+        HIDDEN_DASHBOARD_NUMBERS_KEY,
+        JSON.stringify([...hidden])
+      );
+    }catch(_){}
+  }
+
+  function renderDashboardNumbers(numbers){
+    const hidden = getHiddenDashboardNumbers();
+    const clean = [];
+
+    // Include numbers manually added for JWT lookup, even if they already
+    // exist in the normal auto-login server. This is dashboard-only storage.
+    const merged = [...getJwtDashboardNumbers(), ...(numbers || [])];
+
+    for(const item of merged){
+      const phone = typeof item === 'string'
+        ? item
+        : (item?.phone_number ?? item?.number ?? item?.phone ?? '');
+
+      const p = String(phone).replace(/\D/g,'');
+      if(!p || hidden.has(p)) continue;
+
+      if(!clean.some(x=>x.phone===p)){
+        clean.push({
+          phone:p,
+          raw: item
+        });
+      }
+    }
+
+    numberStatus.textContent = clean.length + ' unused';
+    numberStatus.style.color = clean.length ? '#34d399' : '#6b7280';
+
+    numberList.innerHTML = clean.length
+      ? clean.slice(0,3).map(x => `
+          <div class="number-item dashboard-number-row"
+               data-dashboard-phone="${x.phone}"
+               style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+            <span>📱 ${x.phone}</span>
+            <button
+              type="button"
+              class="dashboard-number-delete"
+              data-phone="${x.phone}"
+              title="Remove from dashboard"
+              aria-label="Remove ${x.phone} from dashboard"
+              style="border:0;background:rgba(239,68,68,.12);color:#fb7185;border:1px solid rgba(239,68,68,.25);border-radius:9px;padding:5px 8px;cursor:pointer;font-weight:800;">
+              🗑️
+            </button>
+          </div>
+        `).join('')
+      : '<span style="color:#6b7280;font-size:11px;">No unused numbers available</span>';
+
+    numberList.querySelectorAll('.dashboard-number-delete').forEach(btn=>{
+      btn.addEventListener('click', function(){
+        const phone = this.dataset.phone || '';
+        if(!phone) return;
+
+        hideDashboardNumber(phone);
+        removeJwtDashboardNumber(phone);
+
+        // IMPORTANT: client-only removal. No API/database delete is called.
+        const row = this.closest('.dashboard-number-row');
+        if(row) row.remove();
+
+        const remaining = numberList.querySelectorAll('.dashboard-number-row').length;
+        numberStatus.textContent = remaining + ' unused';
+        numberStatus.style.color = remaining ? '#34d399' : '#6b7280';
+
+        if(!remaining){
+          numberList.innerHTML =
+            '<span style="color:#6b7280;font-size:11px;">No unused numbers available</span>';
+        }
+
+        showToast('Number removed from dashboard only. Database data was not deleted.','success');
+      });
+    });
+  }
+
   // ─── UI UPDATES ───────────────────────────────────────────────────────────
   async function updateNumberDisplay(){
     try{
       // Firebase is the shared source for manually saved dummy numbers.
-      // If the background sync has loaded it, do not require a server selection.
+      // Hidden numbers are filtered locally only; no delete is sent anywhere.
       if(window.__bhauDummyNumbersLoaded){
         const data=window.__bhauDummyNumbers||{};
         const entries=Object.values(data).filter(v=>v && v.number && v.used!==true);
-        const nums=entries.slice(0,3).map(v=>String(v.number));
-        numberStatus.textContent=nums.length+' unused';
-        numberStatus.style.color=nums.length?'#34d399':'#6b7280';
-        numberList.innerHTML=nums.length?nums.map(n=>`<div class="number-item">📱 ${n}</div>`).join(''):
-          '<span style="color:#6b7280;font-size:11px;">No unused numbers available</span>';
+        renderDashboardNumbers(entries);
         return;
       }
+
       const r=await autoLoginAPI('get_unused');
-      const nums=(r.numbers||[]).slice(0,3);
-      numberStatus.textContent=nums.length+' unused';
-      numberStatus.style.color=nums.length?'#34d399':'#6b7280';
-      numberList.innerHTML=nums.length?nums.map(n=>`<div class="number-item">📱 ${n.phone_number}</div>`).join(''):
-        '<span style="color:#6b7280;font-size:11px;">No unused numbers available</span>';
+      renderDashboardNumbers(r.numbers||[]);
     }catch(e){
       numberStatus.textContent='0 unused';
       numberList.innerHTML='<span style="color:#fb7185;font-size:11px;">Unable to load numbers</span>';
@@ -2910,44 +3064,78 @@ select:focus{
   }
 
   // ─── MANUAL AUTO-SAVE ──────────────────────────────────────────────────
+  // Auto-save referrals are dashboard/JWT storage only. They do NOT call the
+  // old auto-login server, so an existing server number can never produce
+  // "already exists" / "all 3 slots occupied" for this dashboard feature.
   async function manualAutoSaveReferrals(){
     if(autoSaveReferralsBtn.disabled) return;
     autoSaveReferralsBtn.disabled=true;
     autoSaveReferralsBtn.textContent='⏳ Saving...';
+
     try{
-      const unusedR=await autoLoginAPI('get_unused');
-      const currentUnused=unusedR.numbers||[];
-      if(currentUnused.length>=3){
-        showToast('All 3 slots are already occupied.','warning');
-        return;
-      }
       const referrals=S.referralHistoryCache||[];
       if(!referrals.length){
         showToast('No referral history available. Please load Referral History first.','warning');
         return;
       }
-      const unusedNums=currentUnused.map(n=>n.phone_number);
-      const available=3-currentUnused.length;
+
+      const existing=getJwtDashboardNumbers();
+      const hidden=getHiddenDashboardNumbers();
+      const available=Math.max(0,3-existing.filter(n=>!hidden.has(n)).length);
+
+      if(available<=0){
+        showToast('All 3 dashboard slots are already occupied.','warning');
+        return;
+      }
+
       let added=0, dupes=0, invalid=0;
+      const seen=new Set(existing);
+
       for(const ref of referrals){
         if(added>=available) break;
-        let phone=(ref.inviteUserPhone||'').toString().replace(/\D/g,'');
-        if(!phone || phone.length!==10 || !/^[6-9]\d{9}$/.test(phone)){ invalid++; continue; }
-        if(unusedNums.includes(phone)){ dupes++; continue; }
-        try{
-          await autoLoginAPI('save',{phone});
-          added++;
-          unusedNums.push(phone);
-          showToast(`Auto-saved referral: ${phone}`,'success');
-        }catch(e){
-          if(e.message?.toLowerCase().includes('duplicate')||e.message?.toLowerCase().includes('already exists')) dupes++;
-          else showToast(`Failed to save ${phone}: ${e.message}`,'error');
+
+        const phone=String(ref.inviteUserPhone||'').replace(/\D/g,'');
+        if(!/^[6-9]\d{9}$/.test(phone)){
+          invalid++;
+          continue;
         }
+
+        if(seen.has(phone)){
+          dupes++;
+          continue;
+        }
+
+        saveJwtDashboardNumber(phone);
+        showDashboardNumberAgain(phone);
+        seen.add(phone);
+        added++;
+
+        // Python is the source of JWT data. Try the exact phone lookup,
+        // but saving the dashboard number must not depend on JWT availability.
+        try{
+          const savedJwt=await loadSavedJWT(phone);
+          if(savedJwt?.token){
+            try{
+              localStorage.setItem('bhau_pending_saved_jwt',JSON.stringify({
+                phone:savedJwt.phone,
+                token:savedJwt.token,
+                at:Date.now()
+              }));
+            }catch(_){ }
+          }
+        }catch(_){ }
       }
-      if(added>0){ await updateNumberDisplay(); showToast(`✅ ${added} new number(s) saved!`,'success'); }
-      else showToast(`No new numbers. ${dupes} duplicates, ${invalid} invalid.`,'warning');
-    }catch(e){ showToast('Error: '+e.message,'error'); }
-    finally{
+
+      await updateNumberDisplay();
+
+      if(added>0){
+        showToast(`✅ ${added} referral number(s) added to dashboard.`,'success');
+      }else{
+        showToast(`No new referral numbers. ${dupes} duplicates, ${invalid} invalid.`,'warning');
+      }
+    }catch(e){
+      showToast('Error: '+(e.message||'Unable to auto-save referrals.'),'error');
+    }finally{
       autoSaveReferralsBtn.disabled=false;
       autoSaveReferralsBtn.textContent='📥 AUTO SAVE REFERRALS';
     }
@@ -5304,15 +5492,33 @@ select:focus{
 
   // ─── AUTOPASTE ──────────────────────────────────────────────────────────
   autopasteBtn.addEventListener('click',async function(){
-    if(!requireServerSelection()) return;
     this.disabled=true;
     try{
+      // In JWT mode, AUTOPASTE means: load the exact Python-saved JWT.
+      if(S.authMode==='jwt'){
+        const saved=await loadSavedJWT(phoneInput?.value?.trim()||'');
+        if(saved?.token){
+          showToast('Matching saved JWT loaded.','success');
+        }
+        return;
+      }
+      if(!requireServerSelection()) return;
       const r=await autoLoginAPI('claim');
       if(!r.number) throw new Error('No unused number available.');
       phoneInput.value=r.number;
       phoneInput.dispatchEvent(new Event('input',{bubbles:true}));
       phoneInput.dispatchEvent(new Event('change',{bubbles:true}));
-      showToast('Number pasted successfully.','success');
+
+      // Also load the exact JWT previously supplied by Python for this number.
+      const savedJwt=await loadSavedJWT(r.number);
+      if(savedJwt?.token){
+        jwtTokenInput.value=savedJwt.token;
+        jwtTokenInput.dispatchEvent(new Event('input',{bubbles:true}));
+        jwtTokenInput.dispatchEvent(new Event('change',{bubbles:true}));
+        showToast('Number + matching JWT loaded successfully.','success');
+      }else{
+        showToast('Number pasted, but no matching JWT was found.','warning');
+      }
       await updateNumberDisplay();
     }catch(e){ showToast(e.message||'No unused number available.','warning'); }
     finally{ this.disabled=false; }
@@ -5324,16 +5530,52 @@ select:focus{
   // ─── SAVE NUMBER ──────────────────────────────────────────────────────
   saveNumberBtn.addEventListener('click',async function(){
     const phone=saveNumberInput.value.trim();
-    if(!/^[6-9]\d{9}$/.test(phone)){ showToast('Enter valid 10-digit number.','warning'); return; }
+    if(!/^[6-9]\d{9}$/.test(phone)){
+      showToast('Enter valid 10-digit number.','warning');
+      return;
+    }
+
     this.disabled=true;
     try{
-      await autoLoginAPI('save',{phone});
+      // Manual Add is now DASHBOARD/JWT storage only.
+      // Do NOT call autoLoginAPI('save'): an existing server number must not
+      // block JWT use, and this action must not create/change server records.
+      saveJwtDashboardNumber(phone);
+
+      // If this number was previously hidden, show it again.
+      showDashboardNumberAgain(phone);
+
+      // Python is the source of the JWT. Lookup is exact by phone.
+      const savedJwt=await loadSavedJWT(phone);
+
+      if(savedJwt?.token){
+        try{
+          localStorage.setItem('bhau_pending_saved_jwt',JSON.stringify({
+            phone:savedJwt.phone,
+            token:savedJwt.token,
+            at:Date.now()
+          }));
+        }catch(_){}
+      }
+
       saveNumberInput.value='';
-      showToast('Number saved successfully.','success');
+
+      showToast(
+        savedJwt?.token
+          ? '✅ Number added & matching Python JWT loaded.'
+          : '✅ Number added. No matching Python JWT found.',
+        savedJwt?.token ? 'success' : 'warning'
+      );
+
       await updateNumberDisplay();
-    }catch(e){ showToast(e.message||'Number save failed.','error'); }
-    finally{ this.disabled=false; }
+
+    }catch(e){
+      showToast(e.message||'Number add failed.','error');
+    }finally{
+      this.disabled=false;
+    }
   });
+
   saveNumberInput.addEventListener('keydown',e=>{ if(e.key==='Enter') saveNumberBtn.click(); });
 
   // ─── MENU EVENTS ──────────────────────────────────────────────────────
@@ -5466,15 +5708,53 @@ select:focus{
   startNumberAutoUpdate();
 
   // ─── JWT SAVED TOKEN AUTO-PASTE ──────────────────────────────────────
-  async function loadSavedJWT(){
-    if(!jwtAutoPasteBtn) return;
+  function getDashboardSavedNumber(){
+    // Prefer the number currently shown in the dashboard list.
+    const firstRow=document.querySelector('#numberList .dashboard-number-row[data-dashboard-phone]');
+    if(firstRow){
+      const p=String(firstRow.getAttribute('data-dashboard-phone')||'').replace(/\D/g,'');
+      if(/^[6-9]\d{9}$/.test(p)) return p;
+    }
+
+    // Fallback to the currently entered/saved phone field.
+    const candidates=[
+      phoneInput?.value,
+      saveNumberInput?.value,
+      ...getJwtDashboardNumbers(),
+      S.phone
+    ];
+
+    for(const value of candidates){
+      const p=String(value||'').replace(/\D/g,'');
+      if(/^[6-9]\d{9}$/.test(p)) return p;
+    }
+
+    return '';
+  }
+
+  async function loadSavedJWT(phoneOverride=''){
+    if(!jwtAutoPasteBtn) return null;
 
     jwtAutoPasteBtn.disabled=true;
-    if(jwtAutoPasteStatus) jwtAutoPasteStatus.textContent='⏳ Finding saved number...';
+    if(jwtAutoPasteStatus) jwtAutoPasteStatus.textContent='⏳ Finding matching Python-saved JWT...';
 
     try{
-      // No server selection is needed for JWT.
-      const r=await fetch(JWT_LOADER_URL,{
+      // Python is the source of Phone + JWT data.
+      // If a specific number is available on the dashboard/input, use an
+      // exact phone lookup. Otherwise ask clever-service for the latest
+      // Python-loaded record. This means the user does NOT need to save the
+      // number again on the dashboard before using AutoPaste.
+      const requestedPhone=String(
+        phoneOverride || getDashboardSavedNumber()
+      ).replace(/\D/g,'');
+
+      const hasExactPhone=/^[6-9]\d{9}$/.test(requestedPhone);
+
+      const url=hasExactPhone
+        ? JWT_LOADER_URL+'?phone='+encodeURIComponent(requestedPhone)
+        : JWT_LOADER_URL;
+
+      const r=await fetch(url,{
         method:'GET',
         headers:{
           'apikey':JWT_LOADER_KEY,
@@ -5485,32 +5765,66 @@ select:focus{
       });
 
       const d=await r.json().catch(()=>({}));
-      if(!r.ok || !d.success || !d.found || !d.data?.jwt_token){
-        throw new Error(d.error || 'No saved JWT found.');
+
+      // Accept the record whenever the Edge Function returns a JWT record.
+      // Some deployed versions return {success:true,data:{...}} without a
+      // separate `found` boolean, so requiring d.found would incorrectly say
+      // the number is missing even when it exists in Supabase.
+      const record=d.data || null;
+      const rawJwt=record?.jwt_token || d.jwt || d.token || '';
+
+      if(!r.ok || !d.success || !record || !rawJwt){
+        throw new Error(
+          d.error ||
+          (hasExactPhone
+            ? 'JWT not found for number '+requestedPhone+'.'
+            : 'No Python-loaded JWT data found in Supabase.')
+        );
       }
 
-      const phone=String(d.data.phone||'').replace(/\D/g,'');
-      const token=normaliseJwt(d.data.jwt_token);
+      const savedPhone=String(record.phone||'').replace(/\D/g,'');
+      const token=normaliseJwt(rawJwt);
+
+      // Exact-match protection: when a phone was requested, the returned
+      // record MUST belong to that same phone. When no phone was supplied,
+      // the latest Python-loaded record is allowed.
+      if(hasExactPhone && savedPhone!==requestedPhone){
+        throw new Error('JWT phone mismatch. Token was not loaded.');
+      }
 
       if(!token || token.split('.').length!==3){
         throw new Error('Saved JWT is invalid.');
       }
 
       jwtTokenInput.value=token;
+      jwtTokenInput.dispatchEvent(new Event('input',{bubbles:true}));
+      jwtTokenInput.dispatchEvent(new Event('change',{bubbles:true}));
 
-      if(phoneInput && phone.length===10){
-        phoneInput.value=phone;
-        phoneInput.dispatchEvent(new Event('input',{bubbles:true}));
+      if(phoneInput){
+        phoneInput.value=savedPhone;
+        phoneInput.disabled=false;
+        phoneInput.required=false;
+        phoneInput.placeholder='10-digit mobile (optional for JWT)';
       }
 
-      if(jwtAutoPasteStatus) jwtAutoPasteStatus.textContent='✅ JWT loaded for '+phone;
-      showToast('Saved JWT pasted successfully.','success');
+      // JWT mode does not use SERVER 1 / SERVER 2.
+      S.authMode='jwt';
+      const serverGroup=document.getElementById('serverSelectorGroup');
+      if(serverGroup) serverGroup.classList.add('jwt-server-hidden');
+      loginSection.classList.add('jwt-mode');
 
-      return {phone,token};
+      if(jwtAutoPasteStatus)
+        jwtAutoPasteStatus.textContent='✅ Matching JWT loaded for '+savedPhone;
+
+      showToast('✅ JWT auto-pasted for '+savedPhone,'success');
+      return {phone:savedPhone,token};
+
     }catch(e){
-      if(jwtAutoPasteStatus) jwtAutoPasteStatus.textContent='⚠️ '+(e.message||'No saved JWT found.');
+      if(jwtAutoPasteStatus)
+        jwtAutoPasteStatus.textContent='⚠️ '+(e.message||'JWT load failed.');
       showToast(e.message||'Saved JWT not found.','warning');
       return null;
+
     }finally{
       jwtAutoPasteBtn.disabled=false;
     }
@@ -5519,8 +5833,28 @@ select:focus{
   // ─── LOGIN INPUT ─────────────────────────────────────────────────────
   if(jwtToggleBtn){
     jwtToggleBtn.addEventListener('click',()=>{
-      jwtLoginPanel.classList.toggle('active');
-      if(jwtLoginPanel.classList.contains('active')) jwtTokenInput.focus();
+      const active=jwtLoginPanel.classList.toggle('active');
+      const serverGroup=document.getElementById('serverSelectorGroup');
+      if(active){
+        S.authMode='jwt';
+        loginSection.classList.add('jwt-mode');
+        if(serverGroup) serverGroup.classList.add('jwt-server-hidden');
+        if(phoneInput){
+          phoneInput.disabled=false;
+          phoneInput.required=false;
+          phoneInput.placeholder='10-digit mobile (optional for JWT)';
+        }
+        jwtTokenInput.focus();
+      }else{
+        loginSection.classList.remove('jwt-mode');
+        if(serverGroup) serverGroup.classList.remove('jwt-server-hidden');
+        if(phoneInput){
+          phoneInput.required=true;
+          const hasServer=!!(document.getElementById('serverSelect')?.value || selectedServer);
+          phoneInput.disabled=!hasServer;
+          phoneInput.placeholder=hasServer?'Enter 10-digit mobile':'Select server first';
+        }
+      }
     });
   }
   if(jwtClearBtn){
@@ -5533,6 +5867,16 @@ select:focus{
 
   if(jwtAutoPasteBtn){
     jwtAutoPasteBtn.addEventListener('click',async()=>{
+      S.authMode='jwt';
+      loginSection.classList.add('jwt-mode');
+      const serverGroup=document.getElementById('serverSelectorGroup');
+      if(serverGroup) serverGroup.classList.add('jwt-server-hidden');
+
+      if(phoneInput){
+        phoneInput.disabled=false;
+        phoneInput.required=false;
+      }
+
       await loadSavedJWT();
     });
   }
