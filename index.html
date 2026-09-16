@@ -4741,29 +4741,27 @@ select:focus{
               Number(t.reward)>0
             );
 
-            all.push({
-              type:isWithdraw?'withdraw':(isBet?'bet':'deposit'),
-              appDate:t.appDate||t.createTime||Date.now(),
-              amount:Number(t.betAmount??t.paidAmount??t.price??t.receivedAmount??0),
-              balance:Number(t.balance??0),
-              reward:Number(t.reward??t.prizeAmount??0),
-              orderNo:t.orderNo||t.order||'',
-              payTypeName:t.payTypeName||'',
-              channelName:t.channelName||'',
-              // Bet/game/bonus records are completed wallet entries unless
-              // the API explicitly reports a different state.
-              status:(isBet
-                ? ((String(t.status||'').toUpperCase()==='FAILED'||Number(t.respCode)===3)?'FAILED':
-                   (String(t.status||'').toUpperCase()==='PENDING'?'PENDING':'COMPLETE'))
-                : ((Number(t.respCode)===3||String(t.status)==='3')?'FAILED':
-                   ((Number(t.respCode)===2||String(t.status)==='2')?'COMPLETE':
-                    ((Number(t.respCode)===1||String(t.status)==='1')?'BANK PROCESSING':'PENDING')))),
-              gameName:t.gameName||'',
-              betAmount:Number(t.betAmount??t.price??0),
-              prizeAmount:Number(t.prizeAmount??t.reward??0),
-              userCardNumber:t.userCardNumber||'',
-              bankName:t.bankName||''
-            });
+            // Balance API is used only for game/bonus activity.
+            // Deposits and withdrawals are loaded from their dedicated log APIs.
+            if(isBet){
+              all.push({
+                type:'bet',
+                appDate:t.appDate||t.createTime||Date.now(),
+                amount:Number(t.betAmount??t.paidAmount??t.price??t.receivedAmount??0),
+                balance:Number(t.balance??0),
+                reward:Number(t.reward??t.prizeAmount??0),
+                orderNo:t.orderNo||t.order||'',
+                payTypeName:t.payTypeName||'',
+                channelName:t.channelName||'',
+                status:((String(t.status||'').toUpperCase()==='FAILED'||Number(t.respCode)===3)?'FAILED':
+                       (String(t.status||'').toUpperCase()==='PENDING'?'PENDING':'COMPLETE')),
+                gameName:t.gameName||'',
+                betAmount:Number(t.betAmount??t.price??0),
+                prizeAmount:Number(t.prizeAmount??t.reward??0),
+                userCardNumber:t.userCardNumber||'',
+                bankName:t.bankName||''
+              });
+            }
           }
         }
       }
@@ -4876,12 +4874,38 @@ select:focus{
       }catch(_){}
     }catch(_){}
 
-    // De-duplicate records returned by both history sources.
-    const seen=new Set();
+    // FINAL de-duplication. Each deposit/withdrawal has a dedicated source.
+    // Prefer orderNo as the stable transaction identity. For legacy records
+    // without orderNo, use type + amount + timestamp proximity.
+    const seenKeys=new Set();
+    const fallback=[];
     all=all.filter(t=>{
-      const key=[t.type,t.orderNo,t.appDate,t.amount].join('|');
-      if(seen.has(key)) return false;
-      seen.add(key);
+      const type=String(t.type||'');
+      const amount=Number(t.amount||0);
+      const order=String(t.orderNo||'').trim().toLowerCase();
+
+      if(order){
+        const key=type+'|order|'+order;
+        if(seenKeys.has(key)) return false;
+        seenKeys.add(key);
+        return true;
+      }
+
+      const time=new Date(t.appDate).getTime();
+      if(!Number.isFinite(time) || time<=0){
+        const key=type+'|no-order|'+amount.toFixed(2)+'|'+String(t.payTypeName||'').toLowerCase()+'|'+String(t.channelName||'').toLowerCase();
+        if(seenKeys.has(key)) return false;
+        seenKeys.add(key);
+        return true;
+      }
+
+      const duplicate=fallback.some(x=>
+        x.type===type &&
+        Math.abs(x.time-time)<=3000 &&
+        Math.abs(x.amount-amount)<0.001
+      );
+      if(duplicate) return false;
+      fallback.push({type,amount,time});
       return true;
     });
 
