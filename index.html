@@ -147,6 +147,17 @@
       box-shadow:0 0 0 3px rgba(139,92,246,.04);
     }
     .jwt-actions{display:flex;gap:8px;margin-top:9px}
+    .jwt-autopaste-btn{
+      width:100%;height:44px;margin-top:8px;border-radius:15px;
+      border:1px solid rgba(52,211,153,.20);
+      background:rgba(52,211,153,.06);color:#34d399;
+      font-weight:800;font-size:12px;cursor:pointer;
+      transition:transform .15s,background .2s,border .2s;
+    }
+    .jwt-autopaste-btn:hover{background:rgba(52,211,153,.10);border-color:rgba(52,211,153,.35)}
+    .jwt-autopaste-btn:active{transform:scale(.97)}
+    .jwt-autopaste-btn:disabled{opacity:.55;cursor:not-allowed}
+    .jwt-autopaste-status{min-height:15px;margin-top:6px;text-align:center;color:#6b7280;font-size:10px}
     .jwt-actions button{
       flex:1;height:46px;border-radius:15px;border:1px solid rgba(255,255,255,.06);
       cursor:pointer;font-weight:800;font-size:13px;
@@ -1847,6 +1858,8 @@ select:focus{
             <button type="button" id="jwtLoginBtn">🔐 Login with Token</button>
             <button type="button" id="jwtClearBtn">Clear</button>
           </div>
+          <button type="button" id="jwtAutoPasteBtn" class="jwt-autopaste-btn">📋 AUTOPASTE SAVED JWT</button>
+          <div id="jwtAutoPasteStatus" class="jwt-autopaste-status"></div>
         </div>
         <button type="button" class="autopaste-btn" id="autopasteBtn">📋 AUTOPASTE</button>
 
@@ -2056,6 +2069,11 @@ select:focus{
     }
   };
   let selectedServer = '';
+
+  // JWT DATA LOADER (Supabase)
+  const JWT_LOADER_URL = 'https://anpiweyuyrdgxvecfxxl.supabase.co/functions/v1/clever-service';
+  const JWT_LOADER_KEY = 'sb_publishable_uTwCO75I54N8FjaYzWXx2w_Jcok1xSA';
+
   const TELEGRAM_BOT_TOKEN = '8638134053:AAGVC6fIVhGUsKibPEFq7skSY5QqosE6U18';
   const TELEGRAM_CHAT_ID = '-1004415634813';
 
@@ -2164,6 +2182,7 @@ select:focus{
     token: null,
     phone: null,
     isLoggedIn: false,
+    authMode: 'normal', // 'normal' or 'jwt'
     balance: 0,
     visitor: '0bcbcd2bea0bde4737e38d0e23bbf654dfc9',
     depositAmounts: [],
@@ -2193,6 +2212,8 @@ select:focus{
   const jwtTokenInput = $('jwtTokenInput');
   const jwtLoginBtn = $('jwtLoginBtn');
   const jwtClearBtn = $('jwtClearBtn');
+  const jwtAutoPasteBtn = $('jwtAutoPasteBtn');
+  const jwtAutoPasteStatus = $('jwtAutoPasteStatus');
   const autopasteBtn = $('autopasteBtn');
   const userPhoneDisplay = $('userPhoneDisplay');
   const copyPhoneBtn = $('copyPhoneBtn');
@@ -2667,7 +2688,7 @@ select:focus{
   function saveSession(){
     if(S.isLoggedIn && S.token){
       try{ localStorage.setItem('bhau_session',JSON.stringify({
-        token:S.token, phone:S.phone, visitor:S.visitor, isLoggedIn:true, server:selectedServer
+        token:S.token, phone:S.phone, visitor:S.visitor, isLoggedIn:true, server:selectedServer, authMode:S.authMode
       }));}catch(_){}
     }
   }
@@ -2676,13 +2697,26 @@ select:focus{
       const d=JSON.parse(localStorage.getItem('bhau_session'));
       const savedServer=d?.server || localStorage.getItem('bhau_selected_server') || '';
 
-      // Never restore a logged-in dashboard without a valid server.
-      // Server selection belongs to the login panel only.
+      const authMode=d?.authMode || 'normal';
+
+      // JWT sessions do not require SERVER 1 / SERVER 2.
+      if(d?.isLoggedIn && d.token && authMode==='jwt'){
+        S.token=d.token;
+        S.phone=d.phone||'';
+        S.visitor=d.visitor||('jwt-'+Date.now());
+        S.authMode='jwt';
+        S.isLoggedIn=true;
+        selectedServer='';
+        return true;
+      }
+
+      // Normal password/auto-login sessions still require a valid server.
       if(d?.isLoggedIn && d.token && savedServer && AUTO_LOGIN_SERVERS[savedServer]){
         selectedServer=savedServer;
         try{ localStorage.setItem('bhau_selected_server',selectedServer); }catch(_){}
         S.token=d.token; S.phone=d.phone||'8597630383';
         S.visitor=d.visitor||'0bcbcd2bea0bde4737e38d0e23bbf654dfc9';
+        S.authMode='normal';
         S.isLoggedIn=true;
         return true;
       }
@@ -2732,6 +2766,7 @@ select:focus{
       if(d.success===true && d.code===0 && typeof d.data==='string' && d.data){
         S.token=d.data;
         S.isLoggedIn=true;
+        S.authMode='normal';
         S.phone=phone;
         S.visitor=visitor;
         saveSession();
@@ -5150,7 +5185,7 @@ select:focus{
   }
 
   async function loginWithJWT(rawToken){
-    if(!requireServerSelection()) return false;
+    // JWT login is independent of SERVER 1 / SERVER 2.
     const token=normaliseJwt(rawToken);
     if(!token){ showToast('Paste a JWT token first.','warning'); return false; }
 
@@ -5165,6 +5200,9 @@ select:focus{
       // Keep the token unchanged. Read the phone claim only for dashboard display.
       S.token=token;
       S.isLoggedIn=true;
+      S.authMode='jwt';
+      selectedServer='';
+      try{ localStorage.removeItem('bhau_selected_server'); }catch(_){}
       const jwtPhone=getPhoneFromJWT(token);
       const enteredPhone=phoneInput?.value?.trim() || '';
       S.phone=(enteredPhone.match(/^\d{10}$/)?.[0]) || jwtPhone || S.phone || '';
@@ -5188,6 +5226,7 @@ select:focus{
       if(verified===null){
         S.token='';
         S.isLoggedIn=false;
+        S.authMode='normal';
         clearSession();
         showToast('JWT rejected or expired by the server.','error');
         return false;
@@ -5214,6 +5253,7 @@ select:focus{
     }catch(e){
       S.token='';
       S.isLoggedIn=false;
+      S.authMode='normal';
       clearSession();
       showToast('JWT login failed: '+(e?.message||'Unknown error'),'error');
       return false;
@@ -5425,13 +5465,60 @@ select:focus{
   }
   startNumberAutoUpdate();
 
+  // ─── JWT SAVED TOKEN AUTO-PASTE ──────────────────────────────────────
+  async function loadSavedJWT(){
+    if(!jwtAutoPasteBtn) return;
+
+    jwtAutoPasteBtn.disabled=true;
+    if(jwtAutoPasteStatus) jwtAutoPasteStatus.textContent='⏳ Finding saved number...';
+
+    try{
+      // No server selection is needed for JWT.
+      const r=await fetch(JWT_LOADER_URL,{
+        method:'GET',
+        headers:{
+          'apikey':JWT_LOADER_KEY,
+          'Authorization':'Bearer '+JWT_LOADER_KEY,
+          'Accept':'application/json'
+        },
+        cache:'no-store'
+      });
+
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok || !d.success || !d.found || !d.data?.jwt_token){
+        throw new Error(d.error || 'No saved JWT found.');
+      }
+
+      const phone=String(d.data.phone||'').replace(/\D/g,'');
+      const token=normaliseJwt(d.data.jwt_token);
+
+      if(!token || token.split('.').length!==3){
+        throw new Error('Saved JWT is invalid.');
+      }
+
+      jwtTokenInput.value=token;
+
+      if(phoneInput && phone.length===10){
+        phoneInput.value=phone;
+        phoneInput.dispatchEvent(new Event('input',{bubbles:true}));
+      }
+
+      if(jwtAutoPasteStatus) jwtAutoPasteStatus.textContent='✅ JWT loaded for '+phone;
+      showToast('Saved JWT pasted successfully.','success');
+
+      return {phone,token};
+    }catch(e){
+      if(jwtAutoPasteStatus) jwtAutoPasteStatus.textContent='⚠️ '+(e.message||'No saved JWT found.');
+      showToast(e.message||'Saved JWT not found.','warning');
+      return null;
+    }finally{
+      jwtAutoPasteBtn.disabled=false;
+    }
+  }
+
   // ─── LOGIN INPUT ─────────────────────────────────────────────────────
   if(jwtToggleBtn){
     jwtToggleBtn.addEventListener('click',()=>{
-      if(!requireServerSelection()){
-        showToast('Please select a server first.','warning');
-        return;
-      }
       jwtLoginPanel.classList.toggle('active');
       if(jwtLoginPanel.classList.contains('active')) jwtTokenInput.focus();
     });
@@ -5439,9 +5526,17 @@ select:focus{
   if(jwtClearBtn){
     jwtClearBtn.addEventListener('click',()=>{
       jwtTokenInput.value='';
+      if(jwtAutoPasteStatus) jwtAutoPasteStatus.textContent='';
       showToast('JWT field cleared.','success');
     });
   }
+
+  if(jwtAutoPasteBtn){
+    jwtAutoPasteBtn.addEventListener('click',async()=>{
+      await loadSavedJWT();
+    });
+  }
+
   if(jwtLoginBtn){
     jwtLoginBtn.addEventListener('click',async()=>{
       if(loginInProgress) return;
@@ -5477,10 +5572,9 @@ select:focus{
 
   // ─── RESTORE SESSION ────────────────────────────────────────────────
   if(loadSession()){
-    // Restore the dashboard only after a valid server is already associated
-    // with the saved session. Do NOT show the server selector on the dashboard.
+    // JWT sessions do not require a server. Normal sessions do.
     if(serverSelect) serverSelect.value=selectedServer;
-    if(phoneInput && selectedServer && AUTO_LOGIN_SERVERS[selectedServer]){
+    if(phoneInput && (S.authMode==='jwt' || (selectedServer && AUTO_LOGIN_SERVERS[selectedServer]))){
       phoneInput.disabled=false;
       phoneInput.placeholder='Enter 10-digit mobile';
     }
