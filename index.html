@@ -2823,7 +2823,7 @@ select:focus{
     // Successful normal login: remove the logged-in phone from the
     // server-side dashboard list only.
     const loggedPhone =
-      String(phoneInput?.value || S.phone || '').replace(/\D/g,'');
+      String(S.phone || phoneInput?.value || '').replace(/\D/g,'');
     if(/^[6-9]\d{9}$/.test(loggedPhone)){
       await removeLoggedInNumberFromDashboard(loggedPhone);
     }
@@ -2982,8 +2982,6 @@ return true;
         const phone=String(ref.inviteUserPhone||'').replace(/\D/g,'');
         if(!/^[6-9]\d{9}$/.test(phone)||seen.has(phone))continue;
         try{
-          const jwt=await loadSavedJWT(phone);
-          if(!jwt?.token){notFound++;continue;}
           await dashboardAPI('dashboard_add',{phone});seen.add(phone);added++;
         }catch(_){notFound++;}
       }
@@ -5224,7 +5222,7 @@ return true;
     }catch(_){ return null; }
   }
 
-  async function loginWithJWT(rawToken){
+  async function loginWithJWT(rawToken, sourcePhone=''){
     // JWT login is independent of SERVER 1 / SERVER 2.
     const token=normaliseJwt(rawToken);
     if(!token){ showToast('Paste a JWT token first.','warning'); return false; }
@@ -5244,9 +5242,13 @@ return true;
       selectedServer='';
       try{ localStorage.removeItem('bhau_selected_server'); }catch(_){}
       const jwtPhone=getPhoneFromJWT(token);
+      const sourceExactPhone=String(sourcePhone||'').replace(/\D/g,'');
       const enteredPhone=phoneInput?.value?.trim() || '';
-      S.phone=(enteredPhone.match(/^\d{10}$/)?.[0]) || jwtPhone || S.phone || '';
-      if(!S.phone) S.phone='JWT Account';
+      const enteredExactPhone=enteredPhone.replace(/\D/g,'');
+      const exactLoginPhone=/^[6-9]\d{9}$/.test(sourceExactPhone)
+        ? sourceExactPhone
+        : (/^[6-9]\d{9}$/.test(enteredExactPhone) ? enteredExactPhone : jwtPhone);
+      S.phone=exactLoginPhone || S.phone || 'JWT Account';
       S.visitor=String(localStorage.getItem('bhau_jwt_visitor') || ('jwt-'+Date.now()));
       try{ localStorage.setItem('bhau_jwt_visitor',S.visitor); }catch(_){}
 
@@ -5292,8 +5294,8 @@ return true;
       
     // Successful JWT login: remove this phone from the dashboard saved list
     // only. Do NOT delete its jwt_tokens master record.
-    const loggedPhone =
-      String(phoneInput?.value || S.phone || '').replace(/\D/g,'');
+    // Remove only the exact saved number that supplied the JWT.
+    const loggedPhone=exactLoginPhone;
     if(/^[6-9]\d{9}$/.test(loggedPhone)){
       await removeLoggedInNumberFromDashboard(loggedPhone);
     }
@@ -5394,12 +5396,11 @@ return true;
     if(!/^[6-9]\d{9}$/.test(phone)){showToast('Enter valid 10-digit number.','warning');return;}
     this.disabled=true;
     try{
-      // Dashboard save is allowed only when Python has already loaded this exact phone+JWT.
-      const savedJwt=await loadSavedJWT(phone);
-      if(!savedJwt?.token){showToast('❌ Number is not available in Python/Supabase JWT data.','warning');return;}
+      // Dashboard save is independent of JWT storage.
+      // JWT is required later only by AUTOPASTE SAVED JWT.
       await dashboardAPI('dashboard_add',{phone});
       saveNumberInput.value='';
-      showToast('✅ Number saved on server & matching JWT found.','success');
+      showToast('✅ Number saved to Supabase dashboard.','success');
       await updateNumberDisplay();
     }catch(e){showToast(e.message||'Number save failed.','error');}
     finally{this.disabled=false;}
@@ -5537,15 +5538,25 @@ return true;
   startNumberAutoUpdate();
 
   // ─── JWT SAVED TOKEN AUTO-PASTE ──────────────────────────────────────
+  // SAVED-JWT can use ONLY a number currently saved on the dashboard.
   function getDashboardSavedNumber(){
     const row=document.querySelector('#numberList .dashboard-number-row[data-dashboard-phone]');
-    if(row){const p=String(row.getAttribute('data-dashboard-phone')||'').replace(/\D/g,'');if(/^[6-9]\d{9}$/.test(p))return p;}
-    for(const value of [phoneInput?.value,saveNumberInput?.value,S.phone]){
-      const p=String(value||'').replace(/\D/g,'');if(/^[6-9]\d{9}$/.test(p))return p;
-    }
-    return '';
+    if(!row) return '';
+    const p=String(row.getAttribute('data-dashboard-phone')||'').replace(/\D/g,'');
+    return /^[6-9]\d{9}$/.test(p) ? p : '';
   }
 
+  async function isDashboardNumberSaved(phone){
+    const p=String(phone||'').replace(/\D/g,'');
+    if(!/^[6-9]\d{9}$/.test(p)) return false;
+    try{
+      const rows=await getServerDashboardNumbers();
+      return rows.some(item=>String(item?.phone ?? item ?? '').replace(/\D/g,'')===p);
+    }catch(e){
+      console.warn('Saved-number check failed:',e);
+      return false;
+    }
+  }
 
   // ─── REMOVE DASHBOARD NUMBER AFTER SUCCESSFUL LOGIN ─────────────────────
   async function removeLoggedInNumberFromDashboard(phone){
@@ -5585,7 +5596,7 @@ return true;
     }
   }
 
-  async function loadSavedJWT(phoneOverride=''){
+  async function loadSavedJWT(phoneOverride='', requireDashboardSave=true){
     if(!jwtAutoPasteBtn) return null;
 
     jwtAutoPasteBtn.disabled=true;
@@ -5601,11 +5612,16 @@ return true;
         phoneOverride || getDashboardSavedNumber()
       ).replace(/\D/g,'');
 
-      const hasExactPhone=/^[6-9]\d{9}$/.test(requestedPhone);
+      // AUTOPASTE SAVED JWT requires the phone to exist in the dashboard saved list.
+      // NUMBER LOGIN is independent and may load JWT directly by phone.
+      if(!/^[6-9]\d{9}$/.test(requestedPhone)){
+        throw new Error(requireDashboardSave ? 'No saved number available. Save a number first.' : 'Enter a valid 10-digit phone number.');
+      }
+      if(requireDashboardSave && !(await isDashboardNumberSaved(requestedPhone))){
+        throw new Error('Number '+requestedPhone+' is not saved on dashboard.');
+      }
 
-      const url=hasExactPhone
-        ? JWT_LOADER_URL+'?phone='+encodeURIComponent(requestedPhone)
-        : JWT_LOADER_URL;
+      const url=JWT_LOADER_URL+'?phone='+encodeURIComponent(requestedPhone);
 
       const r=await fetch(url,{
         method:'GET',
@@ -5629,9 +5645,7 @@ return true;
       if(!r.ok || !d.success || !record || !rawJwt){
         throw new Error(
           d.error ||
-          (hasExactPhone
-            ? 'JWT not found for number '+requestedPhone+'.'
-            : 'No Python-loaded JWT data found in Supabase.')
+          'JWT not found for saved number '+requestedPhone+'.'
         );
       }
 
@@ -5641,7 +5655,7 @@ return true;
       // Exact-match protection: when a phone was requested, the returned
       // record MUST belong to that same phone. When no phone was supplied,
       // the latest Python-loaded record is allowed.
-      if(hasExactPhone && savedPhone!==requestedPhone){
+      if(savedPhone!==requestedPhone){
         throw new Error('JWT phone mismatch. Token was not loaded.');
       }
 
@@ -5721,31 +5735,28 @@ return true;
   if(jwtNumberLoginBtn){
     jwtNumberLoginBtn.addEventListener('click',async()=>{
       const phone=String(phoneInput?.value||'').replace(/\D/g,'');
-
       if(!/^[6-9]\d{9}$/.test(phone)){
         showToast('Enter a valid 10-digit phone number first.','warning');
-        phoneInput?.focus();
-        return;
+        phoneInput?.focus(); return;
       }
-
-      // JWT mode does not require SERVER 1 / SERVER 2.
       S.authMode='jwt';
       loginSection.classList.add('jwt-mode');
       const serverGroup=document.getElementById('serverSelectorGroup');
       if(serverGroup) serverGroup.classList.add('jwt-server-hidden');
-
       jwtNumberLoginBtn.disabled=true;
-      if(jwtAutoPasteStatus) jwtAutoPasteStatus.textContent='⏳ Looking up JWT for '+phone+'...';
-
+      if(jwtAutoPasteStatus) jwtAutoPasteStatus.textContent='⏳ Loading saved JWT for '+phone+'...';
       try{
-        const loaded=await loadSavedJWT(phone);
-        if(loaded?.token){
-          if(jwtAutoPasteStatus) jwtAutoPasteStatus.textContent='✅ JWT loaded for '+phone;
-          showToast('✅ Matching JWT filled for '+phone,'success');
-        }
-      }finally{
-        jwtNumberLoginBtn.disabled=false;
-      }
+        // NUMBER LOGIN does NOT require Dashboard Save. It looks up the
+        // exact phone directly in Python/Supabase jwt_tokens.
+        const loaded=await loadSavedJWT(phone, false);
+        if(!loaded?.token) throw new Error('No Python-saved JWT found for saved number '+phone+'.');
+        if(jwtAutoPasteStatus) jwtAutoPasteStatus.textContent='⏳ Logging in '+phone+'...';
+        const ok=await loginWithJWT(loaded.token, phone);
+        if(!ok) throw new Error('JWT login was rejected by the server.');
+      }catch(e){
+        showToast(e.message||'Number/JWT login failed.','error');
+        if(jwtAutoPasteStatus) jwtAutoPasteStatus.textContent='⚠️ '+(e.message||'Login failed.');
+      }finally{ jwtNumberLoginBtn.disabled=false; }
     });
   }
 
@@ -5767,7 +5778,7 @@ return true;
       const loaded = await loadSavedJWT();
 
       if(loaded?.token){
-        await loginWithJWT(loaded.token);
+        await loginWithJWT(loaded.token, loaded.phone);
       }
     });
   }
