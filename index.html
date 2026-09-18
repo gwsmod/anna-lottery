@@ -5133,15 +5133,30 @@ return true;
   // ─── LOGOUT / EXIT ──────────────────────────────────────────────────────
   function doLogout(){
     stopLiveBalanceSync(); liveBalanceLastValue=null;
+
+    // Clear the active account/session completely. Dashboard-saved numbers
+    // stay on Supabase; only the current login inputs are cleared.
     S.token=null; S.isLoggedIn=false; S.phone=null; S.balance=0;
+    S.visitor='';
     S.selectedAmount=300; S.selectedPayment=null; S.isAutoClaiming=false;
     S.depositAmounts=[]; S.paymentMethods=[]; S.withdrawCards=[]; S.cardList=[]; S.selectedCard=null; S.referralHistoryCache=null;
     clearSession();
+    try{ localStorage.removeItem('bhau_jwt_visitor'); }catch(_){}
+
+    // Clear phone number and JWT text so the next login starts empty.
+    if(phoneInput){ phoneInput.value=''; phoneInput.placeholder='Select server first'; }
+    if(jwtTokenInput){ jwtTokenInput.value=''; }
+    if(jwtAutoPasteStatus){ jwtAutoPasteStatus.textContent=''; }
+    if(serverSelect){ serverSelect.value=''; }
+    selectedServer='';
+    try{ localStorage.removeItem('bhau_selected_server'); }catch(_){}
+
     exitOverlay.classList.remove('active');
     closePanel();
     logoutConfirmOverlay.classList.remove('active');
     loginSection.style.display='block'; dashboard.style.display='none';
     dynamicContent.innerHTML=''; balanceDisplay.textContent='0.00';
+    updateServerBadges();
   }
 
   function showExitPermission(){ exitOverlay.classList.add('active'); }
