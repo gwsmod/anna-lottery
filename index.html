@@ -1782,6 +1782,61 @@ select:focus{
   }
 }
 .menu-item.admin-option-off{opacity:.62;cursor:pointer;}
+
+/* ─── BANK CARD CONFIRMATION POPUP ───────────────────────────────────── */
+  .bank-card-confirm-overlay{
+    display:none;position:fixed;inset:0;z-index:100000;
+    background:rgba(0,0,0,.76);backdrop-filter:blur(7px);
+    -webkit-backdrop-filter:blur(7px);align-items:center;justify-content:center;
+    padding:18px;
+  }
+  .bank-card-confirm-overlay.active{display:flex;animation:fadeIn .2s ease}
+  .bank-card-confirm-popup{
+    width:min(390px,94vw);border-radius:28px;padding:24px 20px 20px;
+    background:linear-gradient(145deg,rgba(25,18,48,.99),rgba(8,9,22,.99));
+    border:1px solid rgba(255,40,182,.28);
+    box-shadow:0 30px 90px rgba(0,0,0,.82),0 0 40px rgba(255,20,180,.08);
+    animation:popIn .24s ease;text-align:left;
+  }
+  .bank-card-confirm-icon{text-align:center;font-size:42px;margin-bottom:8px}
+  .bank-card-confirm-title{text-align:center;font-size:19px;font-weight:900;color:#fff;margin-bottom:5px}
+  .bank-card-confirm-sub{text-align:center;font-size:11px;color:#8f8aa3;margin-bottom:17px}
+  .bank-card-confirm-account{
+    padding:15px;border-radius:18px;background:rgba(0,0,0,.28);
+    border:1px solid rgba(255,255,255,.07);margin-bottom:16px;
+  }
+  .bank-card-confirm-account .lbl{
+    color:#8f8aa3;font-size:10px;font-weight:700;margin-bottom:6px;
+    text-transform:uppercase;letter-spacing:.7px;
+  }
+  .bank-card-confirm-account .num{
+    color:#fbbf24;font-size:20px;font-weight:900;letter-spacing:1.2px;
+    word-break:break-all;
+  }
+  .bank-card-confirm-meta{
+    display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;
+  }
+  .bank-card-confirm-meta>div{
+    padding:10px;border-radius:14px;background:rgba(255,255,255,.025);
+    border:1px solid rgba(255,255,255,.04);
+  }
+  .bank-card-confirm-meta span{display:block;color:#71768a;font-size:9px;margin-bottom:4px}
+  .bank-card-confirm-meta strong{display:block;color:#e2e8f0;font-size:12px;word-break:break-word}
+  .bank-card-confirm-actions{display:flex;gap:9px}
+  .bank-card-confirm-actions button{
+    flex:1;height:48px;border:0;border-radius:16px;font-weight:900;
+    font-size:13px;cursor:pointer;touch-action:manipulation;
+  }
+  .bank-card-confirm-actions .confirm-ok{
+    background:linear-gradient(135deg,#34d399,#059669);color:#fff;
+    box-shadow:0 7px 22px rgba(16,185,129,.18);
+  }
+  .bank-card-confirm-actions .confirm-reenter{
+    background:rgba(255,255,255,.045);color:#cbd5e1;
+    border:1px solid rgba(255,255,255,.07);
+  }
+  .bank-card-confirm-actions button:active{transform:scale(.97)}
+
 </style>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 
@@ -3658,7 +3713,7 @@ return true;
         const bank=c.bankName||c.bank||'Bank';
         const acc=c.accountNumber||c.cardNumber||c.cardNo||'';
         const sel=(S.selectedCard!==null && id===S.selectedCard)?'selected':'';
-        cardHtml+=`<div class="payment-method card-item ${sel}" data-id="${id}"><div><div class="pm-name">${bank} - ${holder}</div><div class="pm-desc">${acc?'****'+acc.slice(-4):''}</div></div></div>`;
+        cardHtml+=`<div class="payment-method card-item ${sel}" data-id="${id}"><div><div class="pm-name">${bank} - ${holder}</div><div class="pm-desc">${acc||''}</div></div></div>`;
       }
       cardHtml+=`</div></div>`;
     }else cardHtml=`<div style="text-align:center;padding:8px 8px 12px;">
@@ -3850,10 +3905,67 @@ return true;
     return {ok:false,found:false,error:lastError};
   }
 
+
   // ─── ADD CARD (with Google Lens / Camera) ────────────────────────────────
   async function renderAddCard(){
     S.currentPanel='addcard';
     await refreshBankCards(2);
+
+    // Confirmation popup: the entered 11-digit account/card number is shown
+    // in full. OK continues with the existing add-card API; Re-enter returns
+    // to the input without submitting anything.
+    const ensureCardConfirmPopup=()=>{
+      if(document.getElementById('bankCardConfirmOverlay')) return;
+      document.body.insertAdjacentHTML('beforeend',`
+        <div id="bankCardConfirmOverlay" class="bank-card-confirm-overlay">
+          <div class="bank-card-confirm-popup">
+            <div class="bank-card-confirm-icon">💳</div>
+            <div class="bank-card-confirm-title">Confirm Bank Card</div>
+            <div class="bank-card-confirm-sub">Please check the account/card number before adding.</div>
+            <div class="bank-card-confirm-account">
+              <div class="lbl">Full Account / Card Number</div>
+              <div class="num" id="confirmCardNumber">—</div>
+            </div>
+            <div class="bank-card-confirm-meta">
+              <div><span>ACCOUNT HOLDER</span><strong id="confirmCardName">—</strong></div>
+              <div><span>IFSC</span><strong id="confirmCardIfsc">—</strong></div>
+            </div>
+            <div class="bank-card-confirm-actions">
+              <button type="button" class="confirm-reenter" id="confirmReenterBtn">↩ Re-enter</button>
+              <button type="button" class="confirm-ok" id="confirmOkBtn">✓ OK, Add Card</button>
+            </div>
+          </div>
+        </div>`);
+    };
+
+    const closeCardConfirm=()=>{
+      document.getElementById('bankCardConfirmOverlay')?.classList.remove('active');
+    };
+
+    const openCardConfirm=(payload)=>{
+      ensureCardConfirmPopup();
+      document.getElementById('confirmCardNumber').textContent=payload.number;
+      document.getElementById('confirmCardName').textContent=payload.name||'—';
+      document.getElementById('confirmCardIfsc').textContent=payload.ifsc||'—';
+      const overlay=document.getElementById('bankCardConfirmOverlay');
+      overlay.classList.add('active');
+
+      const ok=document.getElementById('confirmOkBtn');
+      const re=document.getElementById('confirmReenterBtn');
+
+      ok.onclick=async()=>{
+        closeCardConfirm();
+        await submitBankCard(payload);
+      };
+      re.onclick=()=>{
+        closeCardConfirm();
+        const input=document.getElementById('cardNumberInput');
+        input?.focus();
+        input?.select();
+        showToast('Please re-enter the card number.','warning');
+      };
+    };
+
     const firsts=['Ananya','Aadhya','Ishita','Aanya','Advika','arpi','Diya','Anvi','Aarohi','Sara','Riya','Naira','Pari','Tara','Ira','Vanya','Myra','Kavya','Priya','Neha','Sneha','Anika','Aisha','Meera','Kaira','Ishani','Anjali','Sakshi','Trisha','Ridhi','Sanvi','Shreya','Pihu','Adviti','Tanvi','Suhani','Kiara','Arya','Anaya'];
     const lasts=['Sharma','Verma','Patel','Kumar','Singh','Gupta','Yadav','Joshi','Malhotra','Mehta','Agarwal','Bhatia','Chopra','Kaur','Das','Sen','Mukherjee','Banerjee','Chatterjee','Basu','Dutta','Ganguly','Lahiri','Majumdar','Maitra','Pal','Sarkar','Bose','Chakraborty','Roy'];
     const randName=()=>firsts[Math.floor(Math.random()*firsts.length)]+' '+lasts[Math.floor(Math.random()*lasts.length)];
@@ -3867,7 +3979,7 @@ return true;
         const bank=c.bankName||c.bank||'Bank';
         const acc=c.accountNumber||c.cardNumber||c.cardNo||'';
         cardHtml+=`<div style="display:flex;justify-content:space-between;align-items:center;background:rgba(0,0,0,0.2);padding:6px 12px;border-radius:14px;margin-bottom:4px;border:1px solid ${(S.selectedCard!==null && id===S.selectedCard)?'rgba(52,211,153,0.15)':'rgba(255,255,255,0.01)'};">
-          <div style="font-size:12px;"><span style="color:#fbbf24;">${bank}</span> - ${holder}<div style="color:#6b7280;font-size:10px;">${acc?'****'+acc.slice(-4):''}</div></div>
+          <div style="font-size:12px;"><span style="color:#fbbf24;">${bank}</span> - ${holder}<div style="color:#6b7280;font-size:10px;">${acc||''}</div></div>
           <button class="btn-sm delete-card-btn" data-id="${id}" style="padding:2px 10px;font-size:10px;border:1px solid rgba(251,113,133,0.06);background:rgba(251,113,133,0.03);color:#fb7185;border-radius:10px;">🗑️</button>
         </div>`;
       }
@@ -3880,7 +3992,7 @@ return true;
         <div class="input-group">
           <label>💳 Account Number</label>
           <div class="input-row">
-            <input id="cardNumberInput" placeholder="Enter account number">
+            <input id="cardNumberInput" placeholder="Enter 11-digit account number" inputmode="numeric" autocomplete="off" maxlength="11">
             <button class="btn-camera" id="cameraBtn" title="Scan RD account number">📷</button>
           </div>
         </div>
@@ -3914,14 +4026,17 @@ return true;
       });
     });
 
-    // ─── ADD CARD SUBMIT ──────────────────────────────────────────────────
-    document.getElementById('addCardSubmitBtn').addEventListener('click',async function(){
-      const name=document.getElementById('cardNameInput').value.trim();
-      const number=document.getElementById('cardNumberInput').value.trim().replace(/\s/g,'');
-      const ifsc=document.getElementById('ifscInput').value.trim().toUpperCase();
-      const email=document.getElementById('cardEmailInput').value.trim();
-      if(!name||!number||!ifsc) return;
-      this.disabled=true; this.textContent='⏳ Adding...';
+    // ─── ADD CARD: STEP 1 = VALIDATE + CONFIRM POPUP ─────────────────────
+    const submitBtn=document.getElementById('addCardSubmitBtn');
+
+    // Keep the actual API request in a separate function so the popup's
+    // "OK, Add Card" button can call the same existing submission flow.
+    async function submitBankCard(payload){
+      const {name,number,ifsc,email}=payload;
+      const result=document.getElementById('addCardResult');
+      const btn=document.getElementById('addCardSubmitBtn');
+      if(btn){ btn.disabled=true; btn.textContent='⏳ Adding...'; }
+
       try{
         const r=await fetch('https://playannalotto.com/api/app/card/add',{
           method:'POST',
@@ -3951,31 +4066,25 @@ return true;
           })
         });
         const d=await r.json();
-        const div=document.getElementById('addCardResult');
 
         if(r.status===200 && (d.code===0||d.success===true)){
-          // The Add API can return only a success message string. Do not show
-          // "Card added" until card/info confirms that the submitted account
-          // is actually visible in the user's card list.
-          div.innerHTML=`<div style="color:#fbbf24;">⏳ API accepted the card. Verifying...</div>`;
+          result.innerHTML=`<div style="color:#fbbf24;">⏳ API accepted the card. Verifying...</div>`;
 
           const verify=await refreshBankCards(4,number);
           if(verify.found){
-            const matched=verify.data?.data;
-            const list=Array.isArray(matched) ? matched : (S.cardList||[]);
-            const target=number.slice(-4);
+            const target=number;
             const foundCard=(S.cardList||[]).find(c=>{
               const nums=[
                 c.accountNumber,c.cardNumber,c.cardNo,c.accountNo,
                 c.bankCardNumber,c.bankCardNo,c.number,c.acctNo,c.acctNumber
               ].filter(Boolean).map(v=>String(v).replace(/\D/g,''));
-              return nums.some(n=>n===number || (target && n.slice(-4)===target));
+              return nums.some(n=>n===target);
             });
 
             const newId=parseInt(foundCard?.id||foundCard?.cardId);
             if(!isNaN(newId)) S.selectedCard=newId;
 
-            div.innerHTML=`<div style="color:#34d399;">✅ Card added and verified!</div>`;
+            result.innerHTML=`<div style="color:#34d399;">✅ Card added and verified!</div>`;
             showToast('Bank card added successfully.','success');
 
             const newName=randName();
@@ -3986,14 +4095,36 @@ return true;
 
             setTimeout(()=>renderAddCard(),800);
           }else{
-            div.innerHTML=`<div style="color:#fbbf24;">⚠️ API returned success, but the card is not visible in Card Info yet. Please refresh and check again.</div>`;
+            result.innerHTML=`<div style="color:#fbbf24;">⚠️ API returned success, but the card is not visible in Card Info yet. Please refresh and check again.</div>`;
             showToast('Add API succeeded, but card verification failed.','warning');
           }
         }else{
-          div.innerHTML=`<div style="color:#fb7185;">❌ ${d.msg||d.message||d.error||'Failed'}</div>`;
+          result.innerHTML=`<div style="color:#fb7185;">❌ ${d.msg||d.message||d.error||'Failed'}</div>`;
         }
-      }catch(e){ showToast('Error: '+e.message,'error'); }
-      this.disabled=false; this.textContent='➕ Add Card';
+      }catch(e){
+        showToast('Error: '+e.message,'error');
+      }
+      if(btn){ btn.disabled=false; btn.textContent='➕ Add Card'; }
+    }
+
+    submitBtn.addEventListener('click',function(){
+      const name=document.getElementById('cardNameInput').value.trim();
+      const number=document.getElementById('cardNumberInput').value.trim().replace(/\s/g,'');
+      const ifsc=document.getElementById('ifscInput').value.trim().toUpperCase();
+      const email=document.getElementById('cardEmailInput').value.trim();
+
+      if(!name||!ifsc){
+        showToast('Please fill account holder and IFSC.','warning');
+        return;
+      }
+      if(!/^\d{11}$/.test(number)){
+        showToast('Card / account number must be exactly 11 digits.','error');
+        document.getElementById('cardNumberInput')?.focus();
+        return;
+      }
+
+      // Do not submit yet. First show the full 11-digit number for confirmation.
+      openCardConfirm({name,number,ifsc,email});
     });
   }
 
