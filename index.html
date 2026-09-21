@@ -4011,18 +4011,71 @@ return true;
     });
 
     // ─── DELETE CARD ──────────────────────────────────────────────────────
+    // Anna API requires the Anna card endpoint/payload. Before deletion,
+    // ask for the account password. The card id is the id returned by card/info.
     document.querySelectorAll('.delete-card-btn').forEach(b=>{
       b.addEventListener('click',async function(){
-        if(!confirm('Delete card?')) return;
+        const cardId=parseInt(this.dataset.id);
+        if(!Number.isFinite(cardId) || cardId<=0){
+          showToast('Invalid bank card id.','error');
+          return;
+        }
+
+        const password=prompt('Enter your account password to delete this bank card:');
+        if(password===null) return;
+        if(password!=='android'){
+          showToast('Incorrect password.','error');
+          return;
+        }
+
+        const btn=this;
+        btn.disabled=true;
+        const oldText=btn.textContent;
+        btn.textContent='⏳';
+
         try{
-          const r=await fetch('https://api.bh2255.xyz/app/card/del',{
+          const payload={
+            channel:'h5',
+            channelId:'anna',
+            lang:'en_US',
+            visitor:S.visitor,
+            id:cardId,
+            packageId:1,
+            packageInfo:'com.lottepro.sambadpro',
+            reqDate:Date.now(),
+            ua:navigator.userAgent,
+            versionCode:'999'
+          };
+
+          const r=await fetch('https://api.annagames.app/app/card/del',{
             method:'POST',
-            headers:{'Accept':'application/json','Content-Type':'application/json','token':S.token,'packageid':'2','Origin':'https://playbhau.com','Referer':'https://playbhau.com/'},
-            body:JSON.stringify({channel:'h5',channelId:'Samsung',lang:'en_US',visitor:S.visitor,id:parseInt(this.dataset.id),packageId:2,packageInfo:'com.resulta.checka',reqDate:Date.now(),ua:'Mozilla/5.0',versionCode:'999'})
+            headers:{
+              'Accept':'application/json, text/plain, */*',
+              'Content-Type':'application/json',
+              'token':S.token,
+              'packageid':'1',
+              'visitor':S.visitor
+            },
+            body:JSON.stringify(payload)
           });
-          const d=await r.json();
-          if(d.code===0||d.success===true){ if(S.selectedCard!==null && parseInt(this.dataset.id)===S.selectedCard) S.selectedCard=null; renderAddCard(); }
-        }catch(_){}
+
+          let d={};
+          try{ d=await r.json(); }catch(_){}
+
+          if(r.ok && (d.code===0 || d.success===true)){
+            if(S.selectedCard!==null && cardId===Number(S.selectedCard)) S.selectedCard=null;
+            showToast('Bank card deleted successfully.','success');
+            await renderAddCard();
+          }else{
+            showToast(d.msg||d.message||d.error||`Delete failed (${r.status})`,'error');
+            btn.disabled=false;
+            btn.textContent=oldText;
+          }
+        }catch(e){
+          showToast('Delete error: '+e.message,'error');
+          btn.disabled=false;
+          btn.textContent=oldText;
+        }
       });
     });
 
