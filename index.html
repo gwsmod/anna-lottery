@@ -3742,7 +3742,7 @@ return true;
         <div style="color:#6b7280;font-size:10px;font-weight:600;margin-bottom:7px;">Smart Recommended Withdrawal</div>
         <div id="smartQuickWithdrawWrap" style="display:flex;gap:8px;margin-bottom:9px;flex-wrap:wrap;"></div>
         <div style="color:#6b7280;font-size:10px;font-weight:600;margin-bottom:4px;">Enter Amount</div>
-        <input type="number" id="withdrawAmountInput" placeholder="Enter withdrawal amount" min="0" step="1" style="width:100%;padding:10px 14px;background:rgba(8,12,26,0.6);border:1px solid rgba(255,255,255,0.02);border-radius:16px;color:#e2e8f0;font-size:14px;outline:none;box-shadow:inset 0 2px 8px rgba(0,0,0,0.1);">
+        <input type="number" id="withdrawAmountInput" placeholder="Enter amount to withdraw" min="0" step="1" style="width:100%;padding:10px 14px;background:rgba(8,12,26,0.6);border:1px solid rgba(255,255,255,0.02);border-radius:16px;color:#e2e8f0;font-size:14px;outline:none;box-shadow:inset 0 2px 8px rgba(0,0,0,0.1);">
       </div>
       <button class="btn-sm btn-withdraw btn-block" id="withdrawSubmitBtn" style="width:100%;min-height:56px;padding:15px 20px;font-size:17px;font-weight:800;border-radius:16px;margin-top:10px;" ${!S.withdrawCards||!S.withdrawCards.length?'disabled':''}>💸 Withdraw Now</button>
       <div id="withdrawResult" class="mt-10"></div></div>`);
@@ -3780,13 +3780,9 @@ return true;
         S.selectedCard=parseInt(this.dataset.id);
       });
     });
-    async function processWithdrawalConfirmed(amt){
-
-      if(!S.selectedCard){ showToast('Please select a card.','warning'); return; }
-      const amt=parseFloat(document.getElementById('withdrawAmountInput').value);
-      if(!amt || amt<=0){ showToast('Enter valid amount.','warning'); return; }
-      if(amt>S.balance){ showToast(`Amount exceeds balance (₹${S.balance.toFixed(2)})`,'warning'); return; }
-      this.disabled=true; this.textContent='⏳ Processing...';
+    async function submitWithdrawalConfirmed(amt){
+      const btn=document.getElementById('withdrawSubmitBtn');
+      if(btn){btn.disabled=true; btn.textContent='⏳ Processing...';}
       try{
         const r=await fetch('https://api.annagames.app/app/pay/paid',{
           method:'POST',
@@ -3848,67 +3844,14 @@ return true;
           });
         }
       }catch(e){ showToast('Error: '+e.message,'error'); }
-      this.disabled=false; this.textContent='💸 Withdraw Now';
+      if(btn){btn.disabled=false; btn.textContent='💸 Withdraw Now';}
 
-    }
-
-    function closeWithdrawalConfirm(){
-      const modal=document.getElementById('withdrawConfirmModal');
-      if(modal) modal.remove();
-    }
-
-    function openWithdrawalConfirm(amt){
-      closeWithdrawalConfirm();
-      const selectedCard = S.withdrawCards.find(c => Number(c.id) === Number(S.selectedCard));
-      const cardNo = selectedCard?.accountNumber || selectedCard?.cardNumber || selectedCard?.cardNo || selectedCard?.accountNo || selectedCard?.bankCardNumber || selectedCard?.bankCardNo || selectedCard?.number || selectedCard?.acctNo || selectedCard?.acctNumber || '';
-      const masked = cardNo ? ('•••• ' + String(cardNo).slice(-4)) : 'Selected bank card';
-
-      const recommended = Number(window.__smartRecommendedWithdraw || 0);
-      const isRecommended = recommended > 0 && Number(amt) === recommended;
-      const amountWarning = recommended > 0 && !isRecommended
-        ? '<div style="font-size:11px;color:#fbbf24;margin:-5px 0 12px;text-align:center;font-weight:700;">⚠️ Entered amount is different from the recommended amount.</div>'
-        : '';
-
-      const modal=document.createElement('div');
-      modal.id='withdrawConfirmModal';
-      modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.72);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:18px;z-index:1000000;';
-      modal.innerHTML=`<div style="width:min(94vw,420px);background:#111827;border:1px solid rgba(255,255,255,.10);border-radius:22px;padding:22px;box-shadow:0 20px 60px rgba(0,0,0,.55);color:#fff;">
-        <div style="font-size:20px;font-weight:900;text-align:center;margin-bottom:6px;">💸 Confirm Withdrawal</div>
-        <div style="font-size:12px;color:#9ca3af;text-align:center;margin-bottom:18px;">Please verify the withdrawal amount.</div>
-        <div style="background:rgba(255,255,255,.05);border-radius:16px;padding:15px;margin-bottom:10px;">
-          <div style="font-size:11px;color:#9ca3af;margin-bottom:5px;">WITHDRAWAL AMOUNT</div>
-          <div style="font-size:28px;font-weight:900;">₹${Number(amt).toFixed(2)}</div>
-          <div style="font-size:12px;color:#9ca3af;margin-top:8px;">Bank card: ${masked}</div>
-        </div>
-        <div style="background:rgba(22,163,74,.10);border:1px solid rgba(22,163,74,.25);border-radius:16px;padding:13px 15px;margin-bottom:14px;">
-          <div style="font-size:11px;color:#86efac;margin-bottom:5px;font-weight:800;">🧮 RECOMMENDED WITHDRAWAL</div>
-          <div style="font-size:22px;font-weight:900;color:#fff;">₹${Number(window.__smartRecommendedWithdraw || 0).toFixed(2)}</div>
-          <div style="font-size:11px;color:#9ca3af;margin-top:4px;">Smart Calculator recommended amount</div>
-        </div>
-        ${amountWarning}
-        <div style="display:flex;gap:10px;">
-          <button id="wrongWithdrawalAmountBtn" type="button" style="flex:1;min-height:50px;border:1px solid rgba(255,255,255,.12);border-radius:14px;background:#252b38;color:#fff;font-weight:800;">✏️ Wrong Amount</button>
-          <button id="confirmWithdrawalBtn" type="button" style="flex:1;min-height:50px;border:0;border-radius:14px;background:#16a34a;color:#fff;font-weight:900;">✅ Withdraw</button>
-        </div>
-      </div>`;
-      document.body.appendChild(modal);
-
-      document.getElementById('wrongWithdrawalAmountBtn').onclick=()=>{
-        closeWithdrawalConfirm();
-        const input=document.getElementById('withdrawAmountInput');
-        if(input){ input.focus(); input.select(); }
-      };
-      document.getElementById('confirmWithdrawalBtn').onclick=async()=>{
-        closeWithdrawalConfirm();
-        await processWithdrawalConfirmed(amt);
-      };
-      modal.addEventListener('click',(e)=>{ if(e.target===modal) closeWithdrawalConfirm(); });
     }
 
     document.getElementById('withdrawSubmitBtn').addEventListener('click',function(){
       if(!S.selectedCard){ showToast('Please select a card.','warning'); return; }
       const input=document.getElementById('withdrawAmountInput');
-      const amt=parseFloat(input.value);
+      const amt=parseFloat(input?.value||'');
       if(!amt || amt<=0){ showToast('Enter valid amount.','warning'); return; }
       if(amt>S.balance){ showToast(`Amount exceeds balance (₹${S.balance.toFixed(2)})`,'warning'); return; }
 
@@ -3918,21 +3861,38 @@ return true;
         const smartRecommended=Number(window.__smartRecommendedWithdraw||0);
         if(!allowed.includes(amt) && amt!==smartRecommended){
           showToast('Wrong withdrawal amount. Please use the Smart Calculator recommended amount.','warning');
-          input.focus();
-          input.select();
-          return;
+          input.focus(); input.select(); return;
         }
       }else{
         const min=Number(w.minimum||1), max=Number(w.maximum||Infinity);
         if(amt<min || amt>max){
           showToast(`Wrong withdrawal amount. Allowed: ₹${min} - ₹${max}`,'warning');
-          input.focus();
-          input.select();
-          return;
+          input.focus(); input.select(); return;
         }
       }
 
-      openWithdrawalConfirm(amt);
+      const recommended=Number(window.__smartRecommendedWithdraw||0);
+      const selectedCard=(Array.isArray(S.withdrawCards)?S.withdrawCards:[]).find(c=>Number(c.id)===Number(S.selectedCard));
+      const cardNo=selectedCard?.accountNumber||selectedCard?.cardNumber||selectedCard?.cardNo||selectedCard?.accountNo||'';
+      const masked=cardNo?('•••• '+String(cardNo).slice(-4)):'Selected bank card';
+      const modal=document.createElement('div');
+      modal.id='withdrawConfirmModal';
+      modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.72);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:18px;z-index:1000000;';
+      modal.innerHTML=`<div style="width:min(94vw,420px);background:#111827;border:1px solid rgba(255,255,255,.1);border-radius:22px;padding:22px;box-shadow:0 20px 60px rgba(0,0,0,.55);color:#fff;">
+        <div style="font-size:20px;font-weight:900;text-align:center;margin-bottom:6px;">💸 Confirm Withdrawal</div>
+        <div style="font-size:12px;color:#9ca3af;text-align:center;margin-bottom:18px;">Please verify the withdrawal amount.</div>
+        <div style="background:rgba(255,255,255,.05);border-radius:16px;padding:15px;margin-bottom:10px;">
+          <div style="font-size:11px;color:#9ca3af;margin-bottom:5px;">WITHDRAWAL AMOUNT</div>
+          <div style="font-size:28px;font-weight:900;">₹${amt.toFixed(2)}</div>
+          <div style="font-size:12px;color:#9ca3af;margin-top:8px;">Bank card: ${masked}</div>
+        </div>
+        ${recommended>0?`<div style="background:rgba(22,163,74,.1);border:1px solid rgba(22,163,74,.25);border-radius:16px;padding:13px 15px;margin-bottom:14px;"><div style="font-size:11px;color:#86efac;margin-bottom:5px;font-weight:800;">🧮 RECOMMENDED WITHDRAWAL</div><div style="font-size:22px;font-weight:900;">₹${recommended.toFixed(2)}</div><div style="font-size:11px;color:#9ca3af;margin-top:4px;">Smart Calculator recommended amount</div></div>`:''}
+        <div style="display:flex;gap:10px;"><button id="wrongWithdrawalAmountBtn" type="button" style="flex:1;min-height:50px;border:1px solid rgba(255,255,255,.12);border-radius:14px;background:#252b38;color:#fff;font-weight:800;">✏️ Wrong Amount</button><button id="confirmWithdrawalBtn" type="button" style="flex:1;min-height:50px;border:0;border-radius:14px;background:#16a34a;color:#fff;font-weight:900;">✅ Withdraw</button></div>
+      </div>`;
+      document.body.appendChild(modal);
+      document.getElementById('wrongWithdrawalAmountBtn').onclick=()=>{modal.remove(); input.focus(); input.select();};
+      document.getElementById('confirmWithdrawalBtn').onclick=async()=>{modal.remove(); await submitWithdrawalConfirmed(amt);};
+      modal.addEventListener('click',e=>{if(e.target===modal) modal.remove();});
     });
   }
 
@@ -6228,7 +6188,7 @@ document.addEventListener('click',function(event){
     }
   }
 },true);
-function validateWithdrawal(event){const button=event.target.closest('#withdrawSubmitBtn');if(!button)return;const input=document.getElementById('withdrawAmountInput');if(!input)return;const amount=Number(input.value);const w=(window.__bhauAdminSettings||defaultSettings).withdrawal||defaultSettings.withdrawal;let message='';if(!Number.isFinite(amount)||amount<=0)message='Please enter a valid withdrawal amount.';else if(w.mode==='fixed'){const allowed=(Array.isArray(w.fixedAmounts)?w.fixedAmounts:[]).map(Number);const smartRecommended=Number(window.__smartRecommendedWithdraw||0);if(!allowed.includes(amount) && amount!==smartRecommended)message='Wrong withdrawal amount. Please use the Smart Calculator recommended amount.';}else{const min=Number(w.minimum||1),max=Number(w.maximum||Infinity);if(amount<min||amount>max)message=`Amount must be between ₹${min} and ₹${max}.`;}
+function validateWithdrawal(event){const button=event.target.closest('#withdrawSubmitBtn');if(!button)return;const input=document.getElementById('withdrawAmountInput');if(!input)return;const amount=Number(input.value);const w=(window.__bhauAdminSettings||defaultSettings).withdrawal||defaultSettings.withdrawal;let message='';if(!Number.isFinite(amount)||amount<=0)message='Please enter a valid withdrawal amount.';else if(w.mode==='fixed'){const allowed=(Array.isArray(w.fixedAmounts)?w.fixedAmounts:[]).map(Number);const smartRecommended=Number(window.__smartRecommendedWithdraw||0);if(!allowed.includes(amount) && amount!==smartRecommended)message='Please select the Smart Calculator recommended amount.';}else{const min=Number(w.minimum||1),max=Number(w.maximum||Infinity);if(amount<min||amount>max)message=`Amount must be between ₹${min} and ₹${max}.`;}
 if(message){
   event.preventDefault();
   event.stopImmediatePropagation();
