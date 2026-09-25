@@ -4457,7 +4457,6 @@ return true;
       }
     }
 
-    document.getElementById('launchBacBo').addEventListener('click',launchBacBo);
 
     document.getElementById('launchFanTan').addEventListener('click',async ()=>{
       try{
@@ -4634,6 +4633,83 @@ return true;
       frame.src=url;
     }
 
+    function closeBacBoGame(){
+      const shell=document.getElementById('bacBoGameShell');
+      if(document.fullscreenElement===shell){
+        try{ document.exitFullscreen?.(); }catch(_){}
+      }
+      const frame=document.getElementById('bacBoGameFrame');
+      if(frame) frame.src='about:blank';
+      if(shell) shell.remove();
+      setGameLauncherVisible(true);
+      const result=document.getElementById('gameResult');
+      if(result) result.innerHTML='<div class="game-result"><span class="ok">🎮 Choose another game.</span></div>';
+    }
+
+    async function launchBacBo(){
+      const result=document.getElementById('gameResult');
+      if(!result || !S.token){
+        if(typeof showToast==='function') showToast('Please login first.','warning');
+        return;
+      }
+
+      removeOtherGameShells('bacBoGameShell');
+      setGameLauncherVisible(false);
+
+      // Create the shell immediately during the button click so the browser
+      // still permits the fullscreen request before the API call completes.
+      const shell=document.createElement('div');
+      shell.id='bacBoGameShell';
+      shell.className='fan-tan-game-shell';
+      shell.innerHTML=`<div class="fan-tan-game-bar"><div class="fan-tan-game-title">🎲 Bac Bo</div><div class="fan-tan-game-actions"><button type="button" class="fan-tan-game-fullscreen" id="bacBoFullscreen">⛶ Full Screen</button><button type="button" class="fan-tan-game-close" id="closeBacBoGame">✕ Close Game</button></div></div><div class="fan-tan-game-loading">⏳ Loading Bac Bo...</div><iframe id="bacBoGameFrame" class="fan-tan-game-frame" title="Bac Bo Game" allow="autoplay; fullscreen; gamepad" allowfullscreen webkitallowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>`;
+      result.innerHTML='';
+      result.appendChild(shell);
+
+      shell.querySelector('#closeBacBoGame').addEventListener('click',closeBacBoGame);
+      shell.querySelector('#bacBoFullscreen').addEventListener('click',()=>toggleGameFullscreen(shell));
+
+      // Auto fullscreen from the original user click.
+      try{
+        const requestFullscreen=shell.requestFullscreen || shell.webkitRequestFullscreen;
+        if(requestFullscreen){
+          const promise=requestFullscreen.call(shell);
+          if(promise?.catch) promise.catch(()=>{});
+        }
+      }catch(_){}
+
+      try{
+        const r=await fetch('https://playannalotto.com/api/iGaming/common/getGameStart?id=43704&otherGame=true',{
+          method:'GET',
+          headers:{
+            'Accept':'application/json',
+            'Token':S.token,
+            'Visitor':S.visitor,
+            'Origin':'https://playannalotto.com',
+            'Referer':'https://playannalotto.com/search',
+            'PackageId':'1'
+          }
+        });
+        const d=await r.json();
+        if(d?.code===0 && d?.success){
+          let url=d?.data?.gameUrl || '';
+          if(url){
+            url=decodeURIComponent(String(url).replace(/\\/g,''));
+            const frame=shell.querySelector('#bacBoGameFrame');
+            if(frame){
+              frame.addEventListener('load',()=>shell.classList.add('is-loaded'),{once:true});
+              frame.src=url;
+            }
+            return;
+          }
+        }
+        closeBacBoGame();
+        if(typeof showToast==='function') showToast(d?.msg || 'Bac Bo game URL was not returned.','error');
+      }catch(e){
+        closeBacBoGame();
+        if(typeof showToast==='function') showToast('Unable to load Bac Bo. Please try again.','error');
+      }
+    }
+
     async function launchNewGame(gameId, gameName, openFn){
       const result=document.getElementById('gameResult');
       try{
@@ -4666,6 +4742,8 @@ return true;
     document.getElementById('launchAviator').addEventListener('click',()=>launchNewGame(46817,'Aviator',openAviatorEmbedded));
     document.getElementById('launchAviatorPro').addEventListener('click',()=>launchNewGame(46819,'Aviator Pro',openAviatorProEmbedded));
 
+
+    document.getElementById('launchBacBo')?.addEventListener('click',launchBacBo);
 
     function closeSpeedAutoRouletteGame(){
       const shell=document.getElementById('speedAutoRouletteGameShell');
