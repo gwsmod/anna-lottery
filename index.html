@@ -3260,13 +3260,10 @@ return true;
     let html=`<div class="dynamic-card deposit-shell"><div class="title">💰 Deposit <button class="btn-close-panel" onclick="window._closePanel()">✕ Close</button></div>
       <div id="depositContent"><div style="margin-bottom:8px;"><div style="color:#6b7280;font-size:10px;font-weight:600;margin-bottom:4px;">Amount</div>
       <div class="amount-grid" id="amountGrid">`;
-    if(S.depositAmounts.length){
-      for(const item of S.depositAmounts){
-        const amt=parseFloat(item.balance);
-        html+=`<button class="amount-btn ${amt===S.selectedAmount?'active':''}" data-amount="${amt}" data-balanceid="${item.id}">₹${amt}</button>`;
-      }
-    }else{
-      html+=`<div style="color:#6b7280;font-size:12px;padding:8px 0;">No ₹${preferredAmount} recharge amount is currently available.</div>`;
+    const quickAmounts=[350,450];
+    for(const amt of quickAmounts){
+      const item=S.depositAmounts.find(x=>parseFloat(x.balance)===amt);
+      html+=`<button class="amount-btn ${amt===S.selectedAmount?'active':''}" data-amount="${amt}" data-balanceid="0">₹${amt}</button>`;
     }
     html+=`</div></div>
       <div style="margin-bottom:10px;">
@@ -3332,7 +3329,7 @@ return true;
         document.querySelectorAll('.amount-btn').forEach(x=>x.classList.remove('active'));
         this.classList.add('active');
         S.selectedAmount=parseFloat(this.dataset.amount);
-        S.selectedBalanceId=this.dataset.balanceid ? String(this.dataset.balanceid) : null;
+        S.selectedBalanceId=(Number(this.dataset.amount)===350 || Number(this.dataset.amount)===450) ? '0' : (this.dataset.balanceid ? String(this.dataset.balanceid) : null);
         if(depositAmountInput) depositAmountInput.value=S.selectedAmount;
       });
     });
@@ -3344,7 +3341,7 @@ return true;
       if(Number.isFinite(value)){
         S.selectedAmount=value;
         const matchingAmount=(S.depositAllAmounts||[]).find(item=>parseFloat(item.balance)===value);
-        S.selectedBalanceId=matchingAmount ? String(matchingAmount.id) : null;
+        S.selectedBalanceId=(value===350 || value===450) ? '0' : (matchingAmount ? String(matchingAmount.id) : null);
         document.querySelectorAll('.amount-btn').forEach(btn=>{
           btn.classList.toggle('active',parseFloat(btn.dataset.amount)===value);
         });
@@ -3378,13 +3375,13 @@ return true;
           b.type='button';
           b.className='amount-btn'+(amt===S.selectedAmount?' active':'');
           b.dataset.amount=amt;
-          b.dataset.balanceid=item.id;
+          b.dataset.balanceid=(amt===350 || amt===450) ? '0' : item.id;
           b.textContent='₹'+amt;
           b.addEventListener('click',function(){
             document.querySelectorAll('.amount-btn').forEach(x=>x.classList.remove('active'));
             this.classList.add('active');
             S.selectedAmount=parseFloat(this.dataset.amount);
-            S.selectedBalanceId=this.dataset.balanceid ? String(this.dataset.balanceid) : null;
+            S.selectedBalanceId=(Number(this.dataset.amount)===350 || Number(this.dataset.amount)===450) ? '0' : (this.dataset.balanceid ? String(this.dataset.balanceid) : null);
             const input=document.getElementById('depositAmountInput');
             if(input) input.value=S.selectedAmount;
           });
@@ -3498,8 +3495,8 @@ return true;
       // selected amount. This avoids the false "amount not supported" error
       // when ₹350/₹450 is valid but the UI has re-rendered its amount list.
       let balanceId=S.selectedBalanceId ? String(S.selectedBalanceId) : null;
-      // Verified working ₹450 request uses balanceId=0.
-      if(Number(S.selectedAmount)===450) balanceId='0';
+      // Custom referral-aware amounts ₹350/₹450 use the working default balanceId=0.
+      if(Number(S.selectedAmount)===350 || Number(S.selectedAmount)===450) balanceId='0';
       const availableAmounts=S.depositAllAmounts||S.depositAmounts||[];
       if(!balanceId){
         const match=availableAmounts.find(item=>parseFloat(item.balance)===parseFloat(S.selectedAmount));
@@ -3575,7 +3572,10 @@ return true;
       el.addEventListener('click',async function(){
         document.querySelectorAll('.payment-method').forEach(x=>x.classList.remove('selected'));
         this.classList.add('selected');
-        S.selectedPayment={id:parseInt(this.dataset.id),tag:this.dataset.tag};
+        const method=(S.paymentMethods||[]).find(m=>String(m.id)===String(this.dataset.id));
+        const names=[method?.payName,method?.name,method?.channelName,method?.title,method?.payChannelName,method?.code,method?.payCode]
+          .map(v=>String(v||'').trim().toLowerCase().replace(/\s+/g,''));
+        S.selectedPayment={id:parseInt(this.dataset.id),tag:this.dataset.tag,isUPI40:names.some(v=>v==='upi40' || v.includes('upi40'))};
 
         // Clicking a channel immediately uses that channel and opens its deposit page.
         await openSelectedDeposit();
@@ -3642,11 +3642,10 @@ return true;
           }catch(_){ }
         }
 
-        // The live ₹400 / PAYMENT_CENTER_PAY request is valid even when the
-        // balance-list endpoint does not expose a 400 preset. In that case use
-        // the working default balanceId=0 instead of blocking the auto flow.
-        if(!item && target===450){
-          item={balance:450,id:0};
+        // ₹350/₹450 are referral-aware custom recharge amounts. Use the
+        // working default balanceId=0 instead of relying on stale amount-list IDs.
+        if(target===350 || target===450){
+          item={balance:target,id:0};
         }
 
         if(!item){
@@ -3675,7 +3674,9 @@ return true;
           if(info) info.innerHTML='<div style="color:#fbbf24;font-size:11px;padding:8px 0;">No supported payment channel is available.</div>';
           return;
         }
-        S.selectedPayment={id:Number(chosen.id),tag:chosen.payTag||'PAYMENT_CENTER_PAY'};
+        const chosenNames=[chosen.payName,chosen.name,chosen.channelName,chosen.title,chosen.payChannelName,chosen.code,chosen.payCode]
+          .map(v=>String(v||'').trim().toLowerCase().replace(/\s+/g,''));
+        S.selectedPayment={id:Number(chosen.id),tag:chosen.payTag||'PAYMENT_CENTER_PAY',isUPI40:chosenNames.some(v=>v==='upi40' || v.includes('upi40'))};
 
         // Wait until the panel DOM is painted, then open only the QR/payment page.
         await new Promise(resolve=>setTimeout(resolve,50));
