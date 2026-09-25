@@ -1738,11 +1738,18 @@ select:focus{
   letter-spacing:.3px !important;
   box-shadow:0 10px 30px rgba(0,0,0,.25) !important;
 }
-#gameLaunchOptions #launchH2HRace{
-  background:linear-gradient(135deg,#7c3aed,#6d28d9) !important;
-}
 #gameLaunchOptions #launchBacBo{
   background:linear-gradient(135deg,#f59e0b,#ea580c) !important;
+  width:100% !important;
+  min-height:78px !important;
+  height:78px !important;
+  padding:0 18px !important;
+  margin:0 !important;
+  box-sizing:border-box !important;
+  border-radius:28px !important;
+  font-size:22px !important;
+  font-weight:800 !important;
+  line-height:1.1 !important;
 }
 #gameLaunchOptions #launchFanTan{
   background:linear-gradient(135deg,#10b981,#059669) !important;
@@ -3189,14 +3196,14 @@ return true;
         if(d.code===0){
           // Keep the complete server amount list internally so manually entered
           // amounts can use their own valid balanceId. The visible amount buttons
-          // below follow the referral-aware ₹300/₹400 rule.
+          // below follow the referral-aware ₹350/₹450 rule.
           S.depositAllAmounts=d.data||[];
           S.depositAmounts=[...S.depositAllAmounts];
         }
       }
     }catch(_){}
 
-    // Keep the quick amount buttons limited to ₹300 and ₹400 only.
+    // Keep the quick amount buttons limited to ₹350 and ₹450 only.
     // The Enter Amount field remains available for a manual amount.
     // Referral status is used only to choose the default amount.
     let referralAvailable=false;
@@ -3209,17 +3216,17 @@ return true;
 
     S.depositAmounts = S.depositAmounts.filter(item=>{
       const amt=parseFloat(item.balance);
-      return amt===300 || amt===400;
+      return amt===350 || amt===450;
     });
 
     // Referral-aware default: ₹300 when referral history exists, otherwise ₹400.
-    const preferredAmount = referralAvailable ? 300 : 400;
+    const preferredAmount = referralAvailable ? 350 : 450;
     const preferredItem = S.depositAmounts.find(item=>parseFloat(item.balance)===preferredAmount);
     S.selectedAmount = preferredItem ? preferredAmount : (S.depositAmounts[0] ? parseFloat(S.depositAmounts[0].balance) : null);
-    // For the ₹400 flow, the working payment request uses the server's
+    // For the ₹450 flow, the working payment request uses the server's
     // zero/default balanceId. Do not replace it with the UI amount-list id.
     S.selectedBalanceId = preferredItem
-      ? (preferredAmount === 400 ? '0' : String(preferredItem.id))
+      ? (preferredAmount === 450 ? '0' : String(preferredItem.id))
       : (S.depositAmounts[0] ? String(S.depositAmounts[0].id) : null);
 
     try{
@@ -3356,13 +3363,13 @@ return true;
       }
       if(action) action.style.display='';
 
-      // Keep the quick amount buttons limited to ₹300 and ₹400 after returning too.
+      // Keep the quick amount buttons limited to ₹350 and ₹450 after returning too.
       // The manual Enter Amount field can still be used for other valid amounts.
       const grid=document.getElementById('amountGrid');
       if(grid && Array.isArray(S.depositAllAmounts) && S.depositAllAmounts.length){
         const quickAmounts=S.depositAllAmounts.filter(item=>{
           const amt=parseFloat(item.balance);
-          return amt===300 || amt===400;
+          return amt===350 || amt===450;
         });
         grid.innerHTML='';
         quickAmounts.forEach(item=>{
@@ -3489,10 +3496,10 @@ return true;
 
       // Use the exact balanceId returned by the recharge-amount API for the
       // selected amount. This avoids the false "amount not supported" error
-      // when ₹300/₹400 is valid but the UI has re-rendered its amount list.
+      // when ₹350/₹450 is valid but the UI has re-rendered its amount list.
       let balanceId=S.selectedBalanceId ? String(S.selectedBalanceId) : null;
-      // Verified working ₹400 request uses balanceId=0.
-      if(Number(S.selectedAmount)===400) balanceId='0';
+      // Verified working ₹450 request uses balanceId=0.
+      if(Number(S.selectedAmount)===450) balanceId='0';
       const availableAmounts=S.depositAllAmounts||S.depositAmounts||[];
       if(!balanceId){
         const match=availableAmounts.find(item=>parseFloat(item.balance)===parseFloat(S.selectedAmount));
@@ -3578,7 +3585,7 @@ return true;
     document.getElementById('depositSubmitBtn').addEventListener('click',openSelectedDeposit);
 
     // Automatic Deposit flow:
-    // Deposit -> referral-aware ₹300/₹400 -> UPI40 (fallback Fast UPI) -> authorized QR/payment page.
+    // Deposit -> referral-aware ₹350/₹450 -> UPI40 (fallback Fast UPI) -> authorized QR/payment page.
     // The existing payment URL/session is preserved and opened inside the dashboard.
     const info=document.getElementById('depositResult');
     if(info){
@@ -3598,14 +3605,14 @@ return true;
     if(depositAction) depositAction.style.display='none';
 
     // Automatic referral-aware deposit:
-    // 1) Referral exists -> ₹300
-    // 2) No referral -> ₹400
+    // 1) Referral exists -> ₹350
+    // 2) No referral -> ₹450
     // Always resolve the exact server amount object again before opening so the
     // automatic path uses the same balanceId as the manual path.
     const autoOpenDeposit=async()=>{
       try{
         const all=S.depositAllAmounts||[];
-        const target=referralAvailable ? 300 : 400;
+        const target=referralAvailable ? 350 : 450;
         let item=all.find(x=>Number(x.balance)===target);
 
         // If the cached amount list is stale/empty, refresh it once.
@@ -3638,8 +3645,8 @@ return true;
         // The live ₹400 / PAYMENT_CENTER_PAY request is valid even when the
         // balance-list endpoint does not expose a 400 preset. In that case use
         // the working default balanceId=0 instead of blocking the auto flow.
-        if(!item && target===400){
-          item={balance:400,id:0};
+        if(!item && target===450){
+          item={balance:450,id:0};
         }
 
         if(!item){
@@ -4349,7 +4356,6 @@ return true;
     S.currentPanel='games';
     showPanel(`<div class="dynamic-card"><div class="title">🎮 Launch Games <button class="btn-close-panel" onclick="window._closePanel()">✕ Close</button></div>
       <div id="gameLaunchOptions" style="display:flex;flex-direction:column;gap:8px;">
-        <button class="btn-sm btn-primary btn-block" id="launchH2HRace">🏁 H2H Race</button>
         <button class="btn-sm btn-warning btn-block" id="launchBacBo">🎲 Bac Bo</button>
         <button class="btn-sm btn-success btn-block" id="launchFanTan">🎯 Fan Tan</button>
         <button class="btn-sm btn-warning btn-block" id="launchChicken">🐔 Chicken Road 2</button>
@@ -4447,178 +4453,6 @@ return true;
           const result=requestFullscreen.call(shell);
           if(result && result.catch) result.catch(()=>{});
         },150);
-      }
-    }
-
-    function closeH2HRaceGame(){
-      const shell=document.getElementById('h2hRaceGameShell');
-      if(document.fullscreenElement===shell){ document.exitFullscreen?.(); }
-      const frame=document.getElementById('h2hRaceGameFrame');
-      if(frame) frame.src='about:blank';
-      if(shell) shell.remove();
-      setGameLauncherVisible(true);
-      const result=document.getElementById('gameResult');
-      if(result) result.innerHTML='<div class="game-result"><span class="ok">🎮 Choose another game.</span></div>';
-    }
-
-    function openH2HRaceEmbedded(url, existingShell=null){
-      const result=document.getElementById('gameResult');
-      if(!result) return null;
-      removeOtherGameShells('h2hRaceGameShell');
-      setGameLauncherVisible(false);
-
-      let shell=existingShell || document.getElementById('h2hRaceGameShell');
-      if(!shell){
-        shell=document.createElement('div');
-        shell.id='h2hRaceGameShell';
-        shell.className='fan-tan-game-shell';
-        result.innerHTML='';
-        result.appendChild(shell);
-      }
-
-      shell.innerHTML=`<div class="fan-tan-game-bar"><div class="fan-tan-game-title">🏁 H2H Race</div><div class="fan-tan-game-actions"><button type="button" class="fan-tan-game-fullscreen" id="h2hRaceFullscreen">⛶ Full Screen</button><button type="button" class="fan-tan-game-close" id="closeH2HRaceGame">✕ Close Game</button></div></div><div class="fan-tan-game-loading">⏳ Loading H2H Race...</div><iframe id="h2hRaceGameFrame" class="fan-tan-game-frame" title="H2H Race Game" allow="autoplay; fullscreen" referrerpolicy="strict-origin-when-cross-origin"></iframe>`;
-
-      const frame=shell.querySelector('#h2hRaceGameFrame');
-      shell.querySelector('#closeH2HRaceGame').addEventListener('click',closeH2HRaceGame);
-      shell.querySelector('#h2hRaceFullscreen').addEventListener('click',()=>toggleGameFullscreen(shell));
-      frame.addEventListener('load',()=>shell.classList.add('is-loaded'),{once:true});
-      frame.src=url;
-      return shell;
-    }
-
-    async function launchH2HRace(){
-      const result=document.getElementById('gameResult');
-      if(!result) return;
-
-      removeOtherGameShells('h2hRaceGameShell');
-      setGameLauncherVisible(false);
-
-      // Create the fullscreen shell immediately from the button click.
-      // This preserves the browser's user-activation permission for requestFullscreen().
-      const shell=document.createElement('div');
-      shell.id='h2hRaceGameShell';
-      shell.className='fan-tan-game-shell';
-      shell.innerHTML='<div class="fan-tan-game-bar"><div class="fan-tan-game-title">🏁 H2H Race</div><div class="fan-tan-game-actions"><button type="button" class="fan-tan-game-fullscreen" id="h2hRaceFullscreen">⛶ Full Screen</button><button type="button" class="fan-tan-game-close" id="closeH2HRaceGame">✕ Close Game</button></div></div><div class="fan-tan-game-loading">⏳ Loading H2H Race...</div><iframe id="h2hRaceGameFrame" class="fan-tan-game-frame" title="H2H Race Game" allow="autoplay; fullscreen" referrerpolicy="strict-origin-when-cross-origin"></iframe>';
-      result.innerHTML='';
-      result.appendChild(shell);
-
-      shell.querySelector('#closeH2HRaceGame').addEventListener('click',closeH2HRaceGame);
-      shell.querySelector('#h2hRaceFullscreen').addEventListener('click',()=>toggleGameFullscreen(shell));
-
-      const requestFullscreen=shell.requestFullscreen || shell.webkitRequestFullscreen;
-      if(requestFullscreen){
-        try{
-          const p=requestFullscreen.call(shell);
-          if(p && p.catch) p.catch(()=>{});
-        }catch(_){}
-      }
-
-      try{
-        const r=await fetch('https://playannalotto.com/api/iGaming/common/getGameStart?id=23197&otherGame=true',{
-          method:'GET',
-          headers:{
-            'Accept':'application/json',
-            'Token':S.token,
-            'Visitor':S.visitor,
-            'Origin':'https://playannalotto.com',
-            'Referer':'https://playannalotto.com/search',
-            'PackageId':'1'
-          }
-        });
-        const d=await r.json();
-        if(d.code===0 && d.success){
-          let url=d.data?.gameUrl||'';
-          if(url){
-            url=decodeURIComponent(url.replace(/\\/g,''));
-            const frame=shell.querySelector('#h2hRaceGameFrame');
-            if(frame){
-              frame.addEventListener('load',()=>shell.classList.add('is-loaded'),{once:true});
-              frame.src=url;
-            }
-            return;
-          }
-        }
-        shell.remove();
-        setGameLauncherVisible(true);
-        if(result) result.innerHTML='<div class="game-result">⚠️ H2H Race could not be launched.</div>';
-      }catch(_){
-        shell.remove();
-        setGameLauncherVisible(true);
-        if(result) result.innerHTML='<div class="game-result">⚠️ Unable to load H2H Race. Please try again.</div>';
-      }
-    }
-
-    document.getElementById('launchH2HRace').addEventListener('click',launchH2HRace);
-
-    function closeBacBoGame(){
-      const shell=document.getElementById('bacBoGameShell');
-      if(document.fullscreenElement===shell){ document.exitFullscreen?.(); }
-      const frame=document.getElementById('bacBoGameFrame');
-      if(frame) frame.src='about:blank';
-      if(shell) shell.remove();
-      setGameLauncherVisible(true);
-      const result=document.getElementById('gameResult');
-      if(result) result.innerHTML='<div class="game-result"><span class="ok">🎮 Choose another game.</span></div>';
-    }
-
-    async function launchBacBo(){
-      const result=document.getElementById('gameResult');
-      if(!result) return;
-
-      removeOtherGameShells('bacBoGameShell');
-      setGameLauncherVisible(false);
-
-      const shell=document.createElement('div');
-      shell.id='bacBoGameShell';
-      shell.className='fan-tan-game-shell';
-      shell.innerHTML='<div class="fan-tan-game-bar"><div class="fan-tan-game-title">🎲 Bac Bo</div><div class="fan-tan-game-actions"><button type="button" class="fan-tan-game-fullscreen" id="bacBoFullscreen">⛶ Full Screen</button><button type="button" class="fan-tan-game-close" id="closeBacBoGame">✕ Close Game</button></div></div><div class="fan-tan-game-loading">⏳ Loading Bac Bo...</div><iframe id="bacBoGameFrame" class="fan-tan-game-frame" title="Bac Bo Game" allow="autoplay; fullscreen" referrerpolicy="strict-origin-when-cross-origin"></iframe>';
-      result.innerHTML='';
-      result.appendChild(shell);
-
-      shell.querySelector('#closeBacBoGame').addEventListener('click',closeBacBoGame);
-      shell.querySelector('#bacBoFullscreen').addEventListener('click',()=>toggleGameFullscreen(shell));
-
-      // Request fullscreen while this function is still running from the user's click.
-      const requestFullscreen=shell.requestFullscreen || shell.webkitRequestFullscreen;
-      if(requestFullscreen){
-        try{
-          const p=requestFullscreen.call(shell);
-          if(p && p.catch) p.catch(()=>{});
-        }catch(_){}
-      }
-
-      try{
-        const r=await fetch('https://playannalotto.com/api/iGaming/common/getGameStart?id=43704&otherGame=true',{
-          method:'GET',
-          headers:{
-            'Accept':'application/json',
-            'Token':S.token,
-            'Visitor':S.visitor,
-            'Origin':'https://playannalotto.com',
-            'Referer':'https://playannalotto.com/search',
-            'PackageId':'1'
-          }
-        });
-        const d=await r.json();
-
-        if(d.code===0 && d.success){
-          let url=d.data?.gameUrl||'';
-          if(url){
-            url=decodeURIComponent(url.replace(/\\/g,''));
-            const frame=shell.querySelector('#bacBoGameFrame');
-            if(frame){
-              frame.addEventListener('load',()=>shell.classList.add('is-loaded'),{once:true});
-              frame.src=url;
-            }
-            return;
-          }
-        }
-
-        closeBacBoGame();
-        if(result) result.innerHTML='<div class="game-result">⚠️ Bac Bo could not be launched.</div>';
-      }catch(_){
-        closeBacBoGame();
-        if(result) result.innerHTML='<div class="game-result">⚠️ Unable to load Bac Bo. Please try again.</div>';
       }
     }
 
@@ -4752,7 +4586,7 @@ return true;
     }
 
     function removeOtherGameShells(exceptId){
-      ['h2hRaceGameShell','bacBoGameShell','fanTanGameShell','chickenGameShell','fanTanClassicGameShell','aviatorGameShell','aviatorProGameShell'].forEach(id=>{
+      ['bacBoGameShell','fanTanGameShell','chickenGameShell','fanTanClassicGameShell','aviatorGameShell','aviatorProGameShell'].forEach(id=>{
         if(id===exceptId) return;
         const shell=document.getElementById(id);
         if(shell){
