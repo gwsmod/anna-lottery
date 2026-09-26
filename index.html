@@ -1738,18 +1738,20 @@ select:focus{
   letter-spacing:.3px !important;
   box-shadow:0 10px 30px rgba(0,0,0,.25) !important;
 }
-#gameLaunchOptions #launchBacBo{
-  background:linear-gradient(135deg,#f59e0b,#ea580c) !important;
+#gameLaunchOptions #launchXocDia,
+#gameLaunchOptions #launchXocDia{
   width:100% !important;
-  min-height:78px !important;
-  height:78px !important;
-  padding:0 18px !important;
+  min-height:100px !important;
+  height:100px !important;
+  padding:22px 20px !important;
   margin:0 !important;
   box-sizing:border-box !important;
-  border-radius:28px !important;
+  border-radius:22px !important;
   font-size:22px !important;
-  font-weight:800 !important;
+  font-weight:900 !important;
+  letter-spacing:.3px !important;
   line-height:1.1 !important;
+  box-shadow:0 10px 30px rgba(0,0,0,.25) !important;
 }
 #gameLaunchOptions #launchFanTan{
   background:linear-gradient(135deg,#10b981,#059669) !important;
@@ -1783,6 +1785,7 @@ select:focus{
   transform:scale(.97) !important;
 }
 @media(max-width:440px){
+  #gameLaunchOptions #launchXocDia,
   #gameLaunchOptions #launchFanTan,
   #gameLaunchOptions #launchChicken,
   #gameLaunchOptions #launchFanTanClassic,
@@ -4357,7 +4360,7 @@ return true;
     S.currentPanel='games';
     showPanel(`<div class="dynamic-card"><div class="title">🎮 Launch Games <button class="btn-close-panel" onclick="window._closePanel()">✕ Close</button></div>
       <div id="gameLaunchOptions" style="display:flex;flex-direction:column;gap:8px;">
-        <button class="btn-sm btn-warning btn-block" id="launchBacBo">🎲 Bac Bo</button>
+        <button class="btn-sm btn-block" id="launchXocDia">⚪ Xoc Dia</button>
         <button class="btn-sm btn-success btn-block" id="launchFanTan">🎯 Fan Tan</button>
         <button class="btn-sm btn-warning btn-block" id="launchChicken">🐔 Chicken Road 2</button>
         <button class="btn-sm btn-primary btn-block" id="launchFanTanClassic">🎯 Fan Tan Classic</button>
@@ -4586,7 +4589,7 @@ return true;
     }
 
     function removeOtherGameShells(exceptId){
-      ['bacBoGameShell','fanTanGameShell','chickenGameShell','fanTanClassicGameShell','aviatorGameShell','aviatorProGameShell'].forEach(id=>{
+      ['xocDiaGameShell','fanTanGameShell','chickenGameShell','fanTanClassicGameShell','aviatorGameShell','aviatorProGameShell'].forEach(id=>{
         if(id===exceptId) return;
         const shell=document.getElementById(id);
         if(shell){
@@ -4633,12 +4636,10 @@ return true;
       frame.src=url;
     }
 
-    function closeBacBoGame(){
-      const shell=document.getElementById('bacBoGameShell');
-      if(document.fullscreenElement===shell){
-        try{ document.exitFullscreen?.(); }catch(_){}
-      }
-      const frame=document.getElementById('bacBoGameFrame');
+    function closeXocDiaGame(){
+      const shell=document.getElementById('xocDiaGameShell');
+      if(document.fullscreenElement===shell){ try{ document.exitFullscreen?.(); }catch(_){} }
+      const frame=document.getElementById('xocDiaGameFrame');
       if(frame) frame.src='about:blank';
       if(shell) shell.remove();
       setGameLauncherVisible(true);
@@ -4646,104 +4647,49 @@ return true;
       if(result) result.innerHTML='<div class="game-result"><span class="ok">🎮 Choose another game.</span></div>';
     }
 
-    async function launchBacBo(){
+    async function launchXocDia(){
       const result=document.getElementById('gameResult');
       if(!result || !S.token){
         if(typeof showToast==='function') showToast('Please login first.','warning');
         return;
       }
-
-      removeOtherGameShells('bacBoGameShell');
+      removeOtherGameShells('xocDiaGameShell');
       setGameLauncherVisible(false);
-
-      // Create the shell immediately during the button click so the browser
-      // still permits the fullscreen request before the API call completes.
       const shell=document.createElement('div');
-      shell.id='bacBoGameShell';
+      shell.id='xocDiaGameShell';
       shell.className='fan-tan-game-shell';
-      shell.innerHTML=`<div class="fan-tan-game-bar"><div class="fan-tan-game-title">🎲 Bac Bo</div><div class="fan-tan-game-actions"><button type="button" class="fan-tan-game-fullscreen" id="bacBoFullscreen">⛶ Full Screen</button><button type="button" class="fan-tan-game-close" id="closeBacBoGame">✕ Close Game</button></div></div><div class="fan-tan-game-loading">⏳ Loading Bac Bo...</div><iframe id="bacBoGameFrame" class="fan-tan-game-frame" title="Bac Bo Game" allow="autoplay; fullscreen; gamepad" allowfullscreen webkitallowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>`;
+      shell.innerHTML=`<div class="fan-tan-game-bar"><div class="fan-tan-game-title">⚪ Xoc Dia</div><div class="fan-tan-game-actions"><button type="button" class="fan-tan-game-fullscreen" id="xocDiaFullscreen">⛶ Full Screen</button><button type="button" class="fan-tan-game-close" id="closeXocDiaGame">✕ Close Game</button></div></div><div class="fan-tan-game-loading">⏳ Loading Xoc Dia...</div><iframe id="xocDiaGameFrame" class="fan-tan-game-frame" title="Xoc Dia Game" allow="autoplay; fullscreen; gamepad" allowfullscreen webkitallowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>`;
       result.innerHTML='';
       result.appendChild(shell);
-
-      shell.querySelector('#closeBacBoGame').addEventListener('click',closeBacBoGame);
-      shell.querySelector('#bacBoFullscreen').addEventListener('click',()=>toggleGameFullscreen(shell));
-
-      // Auto fullscreen from the original user click.
+      shell.querySelector('#closeXocDiaGame').addEventListener('click',closeXocDiaGame);
+      shell.querySelector('#xocDiaFullscreen').addEventListener('click',()=>toggleGameFullscreen(shell));
       try{
         const requestFullscreen=shell.requestFullscreen || shell.webkitRequestFullscreen;
-        if(requestFullscreen){
-          const promise=requestFullscreen.call(shell);
-          if(promise?.catch) promise.catch(()=>{});
-        }
+        if(requestFullscreen){ const promise=requestFullscreen.call(shell); if(promise?.catch) promise.catch(()=>{}); }
       }catch(_){}
-
       try{
-        const r=await fetch('https://playannalotto.com/api/iGaming/common/getGameStart?id=43704&otherGame=true',{
+        const r=await fetch('https://playannalotto.com/api/iGaming/common/getGameStart?id=52389&otherGame=true',{
           method:'GET',
-          headers:{
-            'Accept':'application/json',
-            'Token':S.token,
-            'Visitor':S.visitor,
-            'Origin':'https://playannalotto.com',
-            'Referer':'https://playannalotto.com/search',
-            'PackageId':'1'
-          }
+          headers:{'Accept':'application/json','Token':S.token,'Visitor':S.visitor,'Origin':'https://playannalotto.com','Referer':'https://playannalotto.com/search','PackageId':'1'}
         });
         const d=await r.json();
         if(d?.code===0 && d?.success){
-          let url=d?.data?.gameUrl || '';
+          let url=d?.data?.gameUrl||'';
           if(url){
             url=decodeURIComponent(String(url).replace(/\\/g,''));
-            const frame=shell.querySelector('#bacBoGameFrame');
-            if(frame){
-              frame.addEventListener('load',()=>shell.classList.add('is-loaded'),{once:true});
-              frame.src=url;
-            }
+            const frame=shell.querySelector('#xocDiaGameFrame');
+            if(frame){ frame.addEventListener('load',()=>shell.classList.add('is-loaded'),{once:true}); frame.src=url; }
             return;
           }
         }
-        closeBacBoGame();
-        if(typeof showToast==='function') showToast(d?.msg || 'Bac Bo game URL was not returned.','error');
-      }catch(e){
-        closeBacBoGame();
-        if(typeof showToast==='function') showToast('Unable to load Bac Bo. Please try again.','error');
-      }
-    }
-
-    async function launchNewGame(gameId, gameName, openFn){
-      const result=document.getElementById('gameResult');
-      try{
-        const r=await fetch(`https://playannalotto.com/api/iGaming/common/getGameStart?id=${gameId}&otherGame=true`,{
-          method:'GET',
-          headers:{
-            'Accept':'application/json',
-            'Token':S.token,
-            'Visitor':S.visitor,
-            'Origin':'https://playannalotto.com',
-            'Referer':'https://playannalotto.com/search',
-            'PackageId':'1'
-          }
-        });
-        const d=await r.json();
-        if(d.code===0 && d.success){
-          let url=d.data?.gameUrl||'';
-          if(url){
-            url=decodeURIComponent(url.replace(/\\/g,''));
-            openFn(url);
-            return;
-          }
-        }
-        if(result) result.innerHTML=`<div class="game-result">⚠️ ${gameName} could not be launched.</div>`;
+        closeXocDiaGame();
+        if(typeof showToast==='function') showToast(d?.msg || 'Xoc Dia game URL was not returned.','error');
       }catch(_){
-        if(result) result.innerHTML=`<div class="game-result">⚠️ Unable to load ${gameName}. Please try again.</div>`;
+        closeXocDiaGame();
+        if(typeof showToast==='function') showToast('Unable to load Xoc Dia. Please try again.','error');
       }
     }
-
-    document.getElementById('launchAviator').addEventListener('click',()=>launchNewGame(46817,'Aviator',openAviatorEmbedded));
-    document.getElementById('launchAviatorPro').addEventListener('click',()=>launchNewGame(46819,'Aviator Pro',openAviatorProEmbedded));
-
-
-    document.getElementById('launchBacBo')?.addEventListener('click',launchBacBo);
+    document.getElementById('launchXocDia')?.addEventListener('click',launchXocDia);
 
     function closeSpeedAutoRouletteGame(){
       const shell=document.getElementById('speedAutoRouletteGameShell');
